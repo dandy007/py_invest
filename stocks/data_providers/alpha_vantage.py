@@ -22,12 +22,19 @@ def get_tickers_reader():
 def get_tickers_download():
     return get_tickers(get_tickers_reader())
 
+# symbol,name,exchange,assetType,ipoDate,delistingDate,status
 def get_tickers(csvDataReader):
     next(csvDataReader) # skip header
     tickers = []
     for row in csvDataReader:
         tickerId = row[0]
-        tickers.append(tickerId)
+        name = row[1]
+        assetType = row[3]
+        status = row[6]
+
+        if assetType.lower() == "stock" and status.lower() == "active":
+            tickers.append([tickerId, name])
+
     return tickers
     
 
@@ -35,4 +42,4 @@ def get_tickers(csvDataReader):
 if __name__ == "__main__":
     tickerList = get_tickers(get_tickers_reader())
     for row in tickerList:
-        print(f"Ticker: {row}")
+        print(f"Ticker: {row[0]} Name: {row[1]}")

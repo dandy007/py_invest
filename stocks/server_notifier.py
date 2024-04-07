@@ -2,10 +2,6 @@ import requests
 import platform
 import time
 from win10toast import ToastNotifier
-
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
  
 def check_ip_port():
     try:
