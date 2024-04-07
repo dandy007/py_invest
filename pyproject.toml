@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "stocks-1-0"
+version = "0.1.0"
+description = ""
+authors = ["Jan Danisik <jandanisik@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+yfinance = "^0.2.37"
+pandas = "^2.2.1"
+pyodbc = "^5.1.0"
+requests = "^2.31.0"
+python-dotenv = "^1.0.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
