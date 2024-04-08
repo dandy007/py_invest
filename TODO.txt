@@ -1,0 +1,15 @@
+Scheduler
+- Store upcoming earnings -> send mail webhook with iCal file every month/week....
+
+alerting
+- table with registered scheduled tasks, when they were triggered and when they should be again triggered, alert when some trigger is late
+
+tests
+- db
+- server_notifier
+
+
+
+
+Actual
+- convert earnings to iCal and send through zapier to mail
