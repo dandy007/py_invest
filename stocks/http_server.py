@@ -5,6 +5,7 @@ import datetime
 
 from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
 from apscheduler.schedulers.background import BackgroundScheduler
+from exporters.ical_exporter import export_earnings
 
 PORT = 8080
 
@@ -19,9 +20,10 @@ def notify_earnings():
 
     calendar = get_earnings_calendar()
 
-    for earning in calendar:
-        if earning[0] in tickers:
-            print(f'Ticker: {earning[0]} Date {earning[2]}')
+    export_earnings(tickers)
+    #for earning in calendar:
+    #    if earning[0] in tickers:
+    #        print(f'Ticker: {earning[0]} Date {earning[2]}')
 
 
 
@@ -43,8 +45,7 @@ if __name__ == "__main__":
     #month='*': Execute the task every month
     #day_of_week='mon-fri': Execute the task only on weekdays
 
-
-    scheduler.add_job(notify_earnings, 'cron', second='10')
+    scheduler.add_job(notify_earnings, 'cron', second='*/10')
     scheduler.start()
 
 with socketserver.TCPServer(("", PORT), Handler) as httpd:
