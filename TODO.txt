@@ -16,4 +16,4 @@ tests
 
 
 Actual
-- convert earnings to iCal and send through zapier to mail
+- store yahoo finance data to db with some delay for each stock
