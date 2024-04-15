@@ -1,5 +1,8 @@
 import os
 import mysql.connector
+from mysql.connector.pooling import PooledMySQLConnection
+
+import pyodbc
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -12,13 +15,19 @@ db_name = os.getenv('DB_NAME')
 db_user = os.getenv('DB_USER')
 db_password = os.getenv('DB_PASSWORD')
 
-def get_connection():
+class DB:
+    staticmethod
+    def get_connection_mssql():
+        return pyodbc.connect('Driver={ODBC Driver 18 for SQL Server};Server=tcp:dandy-stocks.database.windows.net,1433;Database=dandy-stocks;Uid=dandY165187496;Pwd=fHSdf%s64a215;Encrypt=yes;TrustServerCertificate=no;')
+    
+    staticmethod
+    def get_connection_mysql() -> PooledMySQLConnection:
         return mysql.connector.connect(
-        host=db_server,
-        user=db_user,
-        password=db_password,
-        database=db_name
-        )
-
+                host=db_server,
+                user=db_user,
+                password=db_password,
+                database=db_name
+                )
+    
 if __name__ == "__main__":
-        get_connection.close()
+     DB.get_connection_mysql()

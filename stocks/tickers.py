@@ -1,6 +1,6 @@
 from data_providers.alpha_vantage import get_tickers_download
 from db.db import get_connection
-from db.db_tickers import update_tickers
+from stocks.db.dao_tickers import update_tickers
 
 if __name__ == "__main__":
     tickers = get_tickers_download()

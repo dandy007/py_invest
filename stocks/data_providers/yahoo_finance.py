@@ -4,7 +4,7 @@ import pandas as pd
 if __name__ == "__main__":
 
     # Get the stock ticker
-    ticker = 'AAPL'#input("Enter the stock ticker: ")
+    ticker = 'NVDA'#input("Enter the stock ticker: ")
 
     # Get the stock data
     stock = yf.Ticker(ticker)
@@ -22,6 +22,7 @@ if __name__ == "__main__":
     print(f"Current Price: {current_price}")
 
     print(f"Shares: {stock.info['sharesOutstanding']}")
+    print(f"MarketCap: {stock.info['marketCap']}")
     print(f"Isin: {stock.isin}")
 
 

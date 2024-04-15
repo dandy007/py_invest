@@ -2,6 +2,10 @@ import http.server
 import socketserver
 import logging
 import datetime
+import yfinance as yf
+import time
+import mysql.connector
+from db import DAO_Tickers, ROW_Tickers, DB
 
 from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -26,6 +30,31 @@ def notify_earnings():
     #        print(f'Ticker: {earning[0]} Date {earning[2]}')
 
 
+def downloadStockData():
+
+    dao_tickers = DAO_Tickers(DB.get_connection_mysql())
+
+    ticker_list = dao_tickers.select_tickers_all()
+    for row in ticker_list:
+        row:ROW_Tickers
+
+        stock = yf.Ticker(row.ticker_id)
+        try:
+            row.sector = stock.info['sector']
+            row.industry = stock.info['industry']
+            row.isin = stock.isin
+            dao_tickers.update_ticker(row, True)
+            print(f"Ticker :{row.ticker_id} updated")
+        except Exception as err:
+            print(f"Error updating tickers[{row.ticker_id}]:", err)
+            continue
+        finally:
+            time.sleep(10)
+
+
+    
+
+            
 
 
     
@@ -45,7 +74,8 @@ if __name__ == "__main__":
     #month='*': Execute the task every month
     #day_of_week='mon-fri': Execute the task only on weekdays
 
-    scheduler.add_job(notify_earnings, 'cron', second='*/10')
+    #scheduler.add_job(notify_earnings, 'cron', second='*/10')
+    scheduler.add_job(downloadStockData, 'cron', days='*/1') # day_of_week='mon-fri'
     scheduler.start()
 
 with socketserver.TCPServer(("", PORT), Handler) as httpd:

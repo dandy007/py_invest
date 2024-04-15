@@ -1,11 +1,18 @@
 OOP - Object oriented programming
+ORM - SQLAlchemy
 
 Scheduler
 - Store upcoming earnings -> refactor + set realistic cron
-- 
+- Update existing tickers from alpha vantage
 
 alerting
 - table with registered scheduled tasks, when they were triggered and when they should be again triggered, alert when some trigger is late
+
+
+db model
+- tickers - tickerId, name, profile
+- 
+- 
 
 tests
 - db
