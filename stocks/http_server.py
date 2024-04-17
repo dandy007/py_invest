@@ -5,7 +5,7 @@ import datetime
 import yfinance as yf
 import time
 import mysql.connector
-from db import DAO_Tickers, ROW_Tickers, DB
+from db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData
 
 from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -32,24 +32,53 @@ def notify_earnings():
 
 def downloadStockData():
 
-    dao_tickers = DAO_Tickers(DB.get_connection_mysql())
+    connection = DB.get_connection_mysql()
+    dao_tickers = DAO_Tickers(connection)
+    dao_tickers_data = DAO_TickersData(connection)
 
     ticker_list = dao_tickers.select_tickers_all()
     for row in ticker_list:
         row:ROW_Tickers
 
-        stock = yf.Ticker(row.ticker_id)
+        #stock = yf.Ticker(row.ticker_id)
         try:
-            row.sector = stock.info['sector']
-            row.industry = stock.info['industry']
-            row.isin = stock.isin
-            dao_tickers.update_ticker(row, True)
-            print(f"Ticker :{row.ticker_id} updated")
+            #row.sector = stock.info['sector']
+            #row.industry = stock.info['industry']
+            #row.isin = stock.isin
+            #dao_tickers.update_ticker(row, True)
+            #print(f"Ticker {row.ticker_id} updated")
+
+            today_data = dao_tickers_data.select_ticker_data(row.ticker_id, datetime.date.today())
+            if today_data == None: 
+                time.sleep(5)
+                stock = yf.Ticker(row.ticker_id)
+                row_data = ROW_TickersData(
+                    stock.info.get('payoutRatio', 0),
+                    datetime.date.today(),
+                    row.ticker_id,
+                    stock.info.get('marketCap', 0),
+                    stock.info.get('currentPrice', 0),
+                    stock.info.get('targetMeanPrice', 0),
+                    stock.info.get('trailingEps', 0),
+                    stock.info.get('sharesOutstanding', 0),
+                    stock.info.get('recommendationMean', 0),
+                    stock.recommendations_summary.strongBuy[0],
+                    stock.recommendations_summary.buy[0],
+                    stock.recommendations_summary.hold[0],
+                    stock.recommendations_summary.sell[0],
+                    stock.recommendations_summary.strongSell[0],
+                    stock.info.get('dividendYield', 0)
+                )
+                dao_tickers_data.insert_ticker_data(row_data, True)
+                print(f"Ticker data {row.ticker_id} inserted")
+            else:
+                print(f"Ticker data {row.ticker_id} skipped")
+                continue
+
         except Exception as err:
             print(f"Error updating tickers[{row.ticker_id}]:", err)
             continue
-        finally:
-            time.sleep(10)
+           
 
 
     
@@ -75,8 +104,9 @@ if __name__ == "__main__":
     #day_of_week='mon-fri': Execute the task only on weekdays
 
     #scheduler.add_job(notify_earnings, 'cron', second='*/10')
-    scheduler.add_job(downloadStockData, 'cron', days='*/1') # day_of_week='mon-fri'
-    scheduler.start()
+    #scheduler.add_job(downloadStockData, 'cron', day='*/1') # day_of_week='mon-fri'
+    downloadStockData()
+    #scheduler.start()
 
 with socketserver.TCPServer(("", PORT), Handler) as httpd:
     print(f"Serving at port {PORT}")

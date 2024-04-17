@@ -23,4 +23,9 @@ tests
 
 
 Actual
-- store yahoo finance data to db with some delay for each stock
+- create empty records for records with errors, store error code and date of last update (tickers and tickers_data)
+- sql query + values - separately
+
+ERROR:yfinance:404 Client Error: Not Found for url: https://query2.finance.yahoo.com/v10/finance/quoteSummary/AHH-P-A?modules=recommendationTrend&corsDomain=finance.yahoo.com&formatted=false&symbol=AHH-P-A&crumb=DuOLRnkdAPd
+Error updating tickers[AHH-P-A]: 'DataFrame' object has no attribute 'strongBuy'
+
