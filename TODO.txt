@@ -1,4 +1,3 @@
-OOP - Object oriented programming
 ORM - SQLAlchemy
 
 Scheduler
@@ -7,6 +6,7 @@ Scheduler
 
 alerting
 - table with registered scheduled tasks, when they were triggered and when they should be again triggered, alert when some trigger is late
+- insider trading
 
 
 db model
@@ -29,3 +29,50 @@ Actual
 ERROR:yfinance:404 Client Error: Not Found for url: https://query2.finance.yahoo.com/v10/finance/quoteSummary/AHH-P-A?modules=recommendationTrend&corsDomain=finance.yahoo.com&formatted=false&symbol=AHH-P-A&crumb=DuOLRnkdAPd
 Error updating tickers[AHH-P-A]: 'DataFrame' object has no attribute 'strongBuy'
 
+
+
+tickers
+- tickerId
+- name
+- industry
+- sector
+- isin
+- market_cap (latest)
+- current_price (latest)
+- target_price (latest)
+- pe (latest)
+- recomm_mean (latest)
+- recomm_avg (latest)
+- div_yield (latest)
+- payout_ratio (latest)
+- next 5y growth (latest)
+
+tickers_time_data (time series data, new record only if last value changed)
+- tickerId
+- date
+- type (type of metric)
+- value
+
+- market_cap - 0
+- enterprise_value - 1
+- shares_outstanding - 2
+- current_price - 3
+- target_price - 4
+- eps - 5
+- book_per_share - 6
+- pe - 7
+- pb - 8
+- beta - 9
+- volume - 10
+- avg volume - 11
+- ev/ebitda - 12
+- recomm_mean - 13
+- recomm_avg - 14
+- div_yield - 15
+- payout_ratio - 16
+- next 5y growth - 17
+- ROA - 18
+- ROE - 19
+- peg - 20
+- ps - 21
+-

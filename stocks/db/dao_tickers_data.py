@@ -2,7 +2,7 @@ import mysql
 from datetime import date
 from .row_tickers_data import ROW_TickersData
 from mysql.connector.pooling import PooledMySQLConnection
-
+from .constants import TIME_DATA_TYPE_CONST
 from .db import DB
 
 class DAO_TickersData:
