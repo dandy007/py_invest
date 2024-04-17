@@ -31,23 +31,23 @@ Error updating tickers[AHH-P-A]: 'DataFrame' object has no attribute 'strongBuy'
 
 
 
-tickers
-- tickerId
+tickers - get row, update name, industry, sector, isin and by all new records in time_data
+- ticker_id
 - name
 - industry
 - sector
 - isin
 - market_cap (latest)
-- current_price (latest)
+- price (latest)
 - target_price (latest)
 - pe (latest)
 - recomm_mean (latest)
 - recomm_avg (latest)
 - div_yield (latest)
 - payout_ratio (latest)
-- next 5y growth (latest)
+- growth_rate_5y (latest)
 
-tickers_time_data (time series data, new record only if last value changed)
+tickers_time_data (time series data, new record only if last value changed) - get latest row, if no row or the different value -> store new row
 - tickerId
 - date
 - type (type of metric)
@@ -56,7 +56,7 @@ tickers_time_data (time series data, new record only if last value changed)
 - market_cap - 0
 - enterprise_value - 1
 - shares_outstanding - 2
-- current_price - 3
+- price - 3
 - target_price - 4
 - eps - 5
 - book_per_share - 6
