@@ -31,6 +31,13 @@ Error updating tickers[AHH-P-A]: 'DataFrame' object has no attribute 'strongBuy'
 
 
 
+
+1. Load all tickers
+2. Fetch yahoo finance data
+3. Check series data - for all mentioned data check/insert new values -> get list of updated types -> dict(type-value)
+4. Prepare update of ticker data with static fields (name, industry, sector, isin) + map columns from previous dict (so I need type-column_name mapping)
+
+
 tickers - get row, update name, industry, sector, isin and by all new records in time_data
 - ticker_id
 - name
