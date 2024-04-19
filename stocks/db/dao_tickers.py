@@ -1,5 +1,6 @@
 import mysql
 from .row_tickers import ROW_Tickers
+from .constants import TICKERS__TYPE_TO_COLUMN__DICT
 from mysql.connector.pooling import PooledMySQLConnection
 
 from .db import DB
@@ -28,10 +29,30 @@ class DAO_Tickers:
 
     def update_ticker(self, ticker_row: ROW_Tickers, force_commit: bool):
         sql = f"update tickers set ticker_id='{ticker_row.ticker_id}', name='{ticker_row.name[0:99]}', industry='{ticker_row.industry[0:99]}', sector='{ticker_row.sector[0:99]}', isin='{ticker_row.isin[0:99]}' where ticker_id='{ticker_row.ticker_id}'"
-        self.execute(sql)
+        values = (ticker_row.ticker_id)
+        self.execute(sql, values)
         if force_commit:
             self.conn.commit()
-        return     
+        return    
+
+    def update_ticker_types(self, ticker_row: ROW_Tickers, types_dict, force_commit: bool):
+        sql = f"update tickers set "
+        values = []
+        for type, value in types_dict.items():
+                if value not in (None, '', 'Infinity'):
+                    type_column = TICKERS__TYPE_TO_COLUMN__DICT.get(type, None)
+                    if type_column != None:
+                        if len(values) > 0:
+                            sql += ','
+                        sql += f" {type_column}=%s"
+                        values.append(value)
+        where = f" where ticker_id = %s"
+        values.append(ticker_row.ticker_id)
+        sql = sql + where
+        self.cursor.execute(sql, values)
+        if force_commit:
+            self.conn.commit()
+        return    
 
     def update_tickers(self, ticker_data_list):
     

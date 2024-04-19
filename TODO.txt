@@ -2,17 +2,10 @@ ORM - SQLAlchemy
 
 Scheduler
 - Store upcoming earnings -> refactor + set realistic cron
-- Update existing tickers from alpha vantage
 
 alerting
 - table with registered scheduled tasks, when they were triggered and when they should be again triggered, alert when some trigger is late
 - insider trading
-
-
-db model
-- tickers - tickerId, name, profile
-- 
-- 
 
 tests
 - db
@@ -24,18 +17,6 @@ tests
 
 Actual
 - create empty records for records with errors, store error code and date of last update (tickers and tickers_data)
-- sql query + values - separately
-
-ERROR:yfinance:404 Client Error: Not Found for url: https://query2.finance.yahoo.com/v10/finance/quoteSummary/AHH-P-A?modules=recommendationTrend&corsDomain=finance.yahoo.com&formatted=false&symbol=AHH-P-A&crumb=DuOLRnkdAPd
-Error updating tickers[AHH-P-A]: 'DataFrame' object has no attribute 'strongBuy'
-
-
-
-
-1. Load all tickers
-2. Fetch yahoo finance data
-3. Check series data - for all mentioned data check/insert new values -> get list of updated types -> dict(type-value)
-4. Prepare update of ticker data with static fields (name, industry, sector, isin) + map columns from previous dict (so I need type-column_name mapping)
 
 
 tickers - get row, update name, industry, sector, isin and by all new records in time_data

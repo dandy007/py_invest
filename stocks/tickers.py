@@ -1,18 +1,8 @@
-from data_providers.alpha_vantage import get_tickers_download
-from db.db import get_connection
-from stocks.db.dao_tickers import update_tickers
+import yfinance
+import requests
+import json
 
-if __name__ == "__main__":
-    tickers = get_tickers_download()
-    
-    if len(tickers) > 0:
-        conn = get_connection()
-        cursor = conn.cursor()
+from bf4py import BF4Py
+from datetime import datetime, timedelta
 
-        update_tickers(cursor, tickers)
-        cursor.close()
-        conn.commit()
-        conn.close()
-
-
-    
+bf4py = BF4Py(default_isin='DE0005190003') # Default BMW

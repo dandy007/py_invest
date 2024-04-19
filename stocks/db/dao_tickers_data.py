@@ -1,11 +1,12 @@
 import mysql
-from datetime import date
+from datetime import datetime, date
 from .row_tickers_data import ROW_TickersData
 from mysql.connector.pooling import PooledMySQLConnection
-from .constants import TIME_DATA_TYPE_CONST
 from .db import DB
 
 class DAO_TickersData:
+
+    table_name = "tickers_time_data"
     
     conn = None
     cursor = None
@@ -23,20 +24,56 @@ class DAO_TickersData:
         return
 
     def insert_ticker_data(self, ticker_data_row: ROW_TickersData, forceCommit: bool):
-        sql = f"INSERT INTO invest.tickers_data" \
-        f" (payout_ratio, date, ticker_id, market_cap, current_price, target_price, eps, shares_outstanding, recommendation_mean, recommendation_strong_buy, recommendation_buy, recommendation_hold, recommendation_sell, recommendation_strong_sell, dividend_yield)" \
-        f" VALUES({ticker_data_row.payout_ratio}, '{ticker_data_row.date}', '{ticker_data_row.ticker_id}', {ticker_data_row.market_cap}, {ticker_data_row.current_price}, {ticker_data_row.target_price}, {ticker_data_row.eps}, {ticker_data_row.shares_outstanding}, {ticker_data_row.recommendation_mean}, {ticker_data_row.recommendation_strong_buy}, {ticker_data_row.recommendation_buy}, {ticker_data_row.recommendation_hold}, {ticker_data_row.recommendation_sell}, {ticker_data_row.recommendation_strong_sell}, {ticker_data_row.dividend_yield})"
-        self.execute(sql)
+        sql = f"INSERT INTO {self.table_name}" \
+        f" (ticker_id, date, type, value)" \
+        f" VALUES(%s, %s, %s, %s)"
+        values = (ticker_data_row.ticker_id, ticker_data_row.date, ticker_data_row.type, ticker_data_row.value)
+        self.cursor.execute(sql, values)
+        if forceCommit:
+            self.conn.commit()
+        return
+    
+    def update_ticker_data(self, ticker_data_row: ROW_TickersData, forceCommit: bool):
+        sql = f"UPDATE {self.table_name}" \
+        f" SET value=%s where ticker_id=%s and type=%s and date=%s" 
+        values = (ticker_data_row.value, ticker_data_row.ticker_id, ticker_data_row.type, ticker_data_row.date)
+        self.cursor.execute(sql, values)
         if forceCommit:
             self.conn.commit()
         return
 
-    def update_ticker_data(self, ticker_data_row: ROW_TickersData, force_commit: bool):
-        #sql = f"update tickers_data set ticker_id='{ticker_row.ticker_id}', name='{ticker_row.name[0:99]}', industry='{ticker_row.industry[0:99]}', sector='{ticker_row.sector[0:99]}', isin='{ticker_row.isin[0:99]}' where ticker_id='{ticker_row.ticker_id}'"
-        #self.execute(sql)
-        #if force_commit:
-        #    self.conn.commit()
+    def store_ticker_data(self, ticker_id, type, value):
+        if value != None and type != None:
+            last_record = self.get_last_data(ticker_id, type)
+            if  last_record != None:
+                if value != None:
+                    last_record.value = value
+                    self.update_ticker_data(last_record, True)
+                
+            elif value != None and value != '':
+                ticker_data = ROW_TickersData()
+                ticker_data.ticker_id = ticker_id
+                ticker_data.date = datetime.today()
+                ticker_data.type = type
+                ticker_data.value = value
+                self.insert_ticker_data(ticker_data, True)
         return     
+
+    def get_last_data(self, ticker_id, type) -> ROW_TickersData:
+        sql = f"select ticker_id, date, type, value from {self.table_name} where ticker_id = %s and type = %s order by date DESC LIMIT 1"
+        values = (ticker_id, type)
+        self.cursor.execute(sql, values)
+        row = self.cursor.fetchone()
+
+        if row:
+            ticker_data = ROW_TickersData()
+            ticker_data.ticker_id = row[0]
+            ticker_data.date = row[1]
+            ticker_data.type = row[2]
+            ticker_data.value = row[3]
+            return ticker_data
+        else:
+            return None
 
     def select_tickers_all(self) -> list[ROW_TickersData] :
         try:
