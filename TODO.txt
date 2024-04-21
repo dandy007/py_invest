@@ -16,7 +16,16 @@ tests
 
 
 Actual
+- outlook zrejme manualne z earnings
+- statistika rocnich/quarter poklesu/rustu ceny vzhledem k atualni cene
 - create empty records for records with errors, store error code and date of last update (tickers and tickers_data)
+- growth_rate_5y - asi selenium - mozna si spocitam ze svych dat
+- pb, pe, ps, pfcf - actual vs 5y average, pro vypocet historickych p/x je potreba ulozit historicke ceny, spocitat eventualni rust pri navratu k prumeru + vazeny prumer vsech techto hodnot
+- growth statistiky - linearni regrese pro nekolik parametru (revenue, eps, gross profit), vyhodnotit jejich linearnost a podle toho dat vahy jednotlivym parametrum ve vazenem prumeru vsech growth
+    - income statement - EBITDA, Net Income, Basic EPS, Gross Profit, Total Revenue
+    - cashflow statement - Free Cash Flow, Net Income From Continuing Operations, Cash Flow From Continuing Operating Activities
+- AI - predam list tickeru, funkci jak prevzit valuacni a dalsi udaje z db/internetu - zhodnoti co je nejlepsi nakoupit a za jakou cenu
+     - 2 agenti - 1 ktery vyhodnocuje rizika, pesimisticky, 1 ktery je optimista a vyhodnocuje potencialni rust, musi se dohodnout na kompromisu a vydat vysledek zda a za kolik nakoupit
 
 
 tickers - get row, update name, industry, sector, isin and by all new records in time_data
@@ -55,7 +64,7 @@ tickers_time_data (time series data, new record only if last value changed) - ge
 - avg volume - 11
 - ev/ebitda - 12
 - recomm_mean - 13
-- recomm_avg - 14
+- recomm_count - 14
 - div_yield - 15
 - payout_ratio - 16
 - next 5y growth - 17

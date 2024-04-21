@@ -13,6 +13,7 @@ pyodbc = "^5.1.0"
 requests = "^2.31.0"
 python-dotenv = "^1.0.1"
 win10toast = "^0.9"
+mysql = "^0.0.3"
 
 
 [build-system]

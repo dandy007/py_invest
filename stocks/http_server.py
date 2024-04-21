@@ -6,7 +6,10 @@ import datetime
 import yfinance as yf
 import time
 import mysql.connector
-from db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, TICKERS_TIME_DATA__TYPE__CONST
+import requests
+from lxml import html
+import pandas as pd
+from db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, TICKERS_TIME_DATA__TYPE__CONST, FUNDAMENTAL_NAME__TO_TYPE__ANNUAL, FUNDAMENTAL_NAME__TO_TYPE__QUATERLY
 
 from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -50,6 +53,8 @@ Handler = http.server.SimpleHTTPRequestHandler
 #logging.basicConfig(filename='invest.log', filemode='w', level=logging.DEBUG, format='%(name)s - %(levelname)s - %(message)s')
 
 
+
+
 def notify_earnings():
     print(f"Task Notify_Earnings executed at: {datetime.datetime.now()}")
     tickers = ['GOOGL','META','AAPL','AMZN','MSFT','BRK-B','V','PLTR','NVDA','PYPL','DIS','MPW','UFPI','O','VICI','BTI','NXST','TSM','VRTX','CMCSA']
@@ -70,13 +75,19 @@ def downloadStockData():
 
     #stock = yf.Ticker('AACT-U')
     
-
+    skip = True
     ticker_list = dao_tickers.select_tickers_all()
     for ticker in ticker_list:
         ticker:ROW_Tickers
 
-        time.sleep(3)
-        #ticker.ticker_id = 'ADTH'
+        if ticker.ticker_id == 'A':
+            skip = False
+
+        if skip:
+            continue
+
+        time.sleep(2)
+        #ticker.ticker_id = 'A'
         stock = yf.Ticker(ticker.ticker_id)
         try:
             name = stock.info.get('name', None)
@@ -100,13 +111,13 @@ def downloadStockData():
                 ps = market_cap / totalRevenue
 
 
-            if name :
+            if name != None :
                 ticker.name = name
-            if sector :
+            if sector != None :
                 ticker.sector = sector
-            if industry :
+            if industry != None :
                 ticker.industry = industry
-            if isin :
+            if isin != None:
                 ticker.isin = isin
 
             dict_data = {
@@ -124,7 +135,7 @@ def downloadStockData():
                 TICKERS_TIME_DATA__TYPE__CONST.VOLUME_AVG: stock.info.get('averageVolume', None),
                 TICKERS_TIME_DATA__TYPE__CONST.EV_EBITDA: stock.info.get('enterpriseToEbitda', None),
                 TICKERS_TIME_DATA__TYPE__CONST.RECOMM_MEAN: stock.info.get('recommendationMean', None),
-                TICKERS_TIME_DATA__TYPE__CONST.RECOMM_AVG: None,
+                TICKERS_TIME_DATA__TYPE__CONST.RECOMM_COUNT: stock.info.get('numberOfAnalystOpinions', None),
                 TICKERS_TIME_DATA__TYPE__CONST.DIV_YIELD: stock.info.get('dividendYield', None),
                 TICKERS_TIME_DATA__TYPE__CONST.PAYOUT_RATIO: stock.info.get('payoutRatio', None),
                 TICKERS_TIME_DATA__TYPE__CONST.GROWTH_5Y: None,
@@ -136,9 +147,39 @@ def downloadStockData():
 
             for type, value in dict_data.items():
                 if value not in (None, 'Infinity'):
-                    dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value)
+                    dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, None)
                     
+            dao_tickers.update_ticker_base_data(ticker, True)
             dao_tickers.update_ticker_types(ticker, dict_data, True)
+
+            # Store fundamental statements data - annual
+            pd.set_option('display.max_rows', None)
+            statements = [stock.income_stmt, stock.balance_sheet, stock.cash_flow]
+            
+            for valuation_name, type in FUNDAMENTAL_NAME__TO_TYPE__ANNUAL.items():
+                for statement in statements:
+                    found = False
+                    for date in statement.columns:
+                        value = statement[date].get(valuation_name, None)
+                        if value != None:
+                            found = True
+                            dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date)
+                    if found == True:
+                        break
+
+            # Store fundamental statements data - quaterly
+            statements = [stock.quarterly_income_stmt, stock.quarterly_balance_sheet, stock.quarterly_cash_flow]
+            for valuation_name, type in FUNDAMENTAL_NAME__TO_TYPE__QUATERLY.items():
+                for statement in statements:
+                    found = False
+                    for date in statement.columns:
+                        value = statement[date].get(valuation_name, None)
+                        if value != None:
+                            found = True
+                            dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date)
+                    if found == True:
+                        break
+
             logger.info(f"Updated {ticker.ticker_id}")
 
             #row.sector = stock.info['sector']

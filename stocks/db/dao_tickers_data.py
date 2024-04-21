@@ -3,6 +3,7 @@ from datetime import datetime, date
 from .row_tickers_data import ROW_TickersData
 from mysql.connector.pooling import PooledMySQLConnection
 from .db import DB
+import math
 
 class DAO_TickersData:
 
@@ -42,26 +43,35 @@ class DAO_TickersData:
             self.conn.commit()
         return
 
-    def store_ticker_data(self, ticker_id, type, value):
+    def store_ticker_data(self, ticker_id, type, value, date):
         if value != None and type != None:
-            last_record = self.get_last_data(ticker_id, type)
-            if  last_record != None:
+            record = self.get_data(ticker_id, type, date)
+            if  record != None:
                 if value != None:
-                    last_record.value = value
-                    self.update_ticker_data(last_record, True)
+                    record.value = value
+                    self.update_ticker_data(record, True)
                 
-            elif value != None and value != '':
+            elif value not in (None, ''):
+                if math.isnan(value):
+                    value = 0
                 ticker_data = ROW_TickersData()
                 ticker_data.ticker_id = ticker_id
-                ticker_data.date = datetime.today()
+                if date == None:
+                    ticker_data.date = datetime.today()
+                else:
+                    ticker_data.date = date
                 ticker_data.type = type
                 ticker_data.value = value
                 self.insert_ticker_data(ticker_data, True)
         return     
 
-    def get_last_data(self, ticker_id, type) -> ROW_TickersData:
-        sql = f"select ticker_id, date, type, value from {self.table_name} where ticker_id = %s and type = %s order by date DESC LIMIT 1"
-        values = (ticker_id, type)
+    def get_data(self, ticker_id, type, date) -> ROW_TickersData:
+        if date == None:
+            sql = f"select ticker_id, date, type, value from {self.table_name} where ticker_id = %s and type = %s order by date DESC LIMIT 1"
+            values = (ticker_id, type)
+        else: 
+            sql = f"select ticker_id, date, type, value from {self.table_name} where ticker_id = %s and type = %s and date=%s LIMIT 1"
+            values = (ticker_id, type, date)
         self.cursor.execute(sql, values)
         row = self.cursor.fetchone()
 
