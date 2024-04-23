@@ -5,6 +5,7 @@ from logging.handlers import RotatingFileHandler
 import datetime
 import yfinance as yf
 import time
+from datetime import date
 import mysql.connector
 import requests
 from lxml import html
@@ -66,9 +67,20 @@ def notify_earnings():
     #    if earning[0] in tickers:
     #        print(f'Ticker: {earning[0]} Date {earning[2]}')
 
+def date_days_diff(past_date_str: str, date_str : str) -> int:
+    if past_date != None and date != None:
+        
+        past_date = datetime.strptime(past_date_str, '%Y-%m-%d')
+        date = datetime.strptime(date_str, '%Y-%m-%d')
+        delta = date - past_date
+        return delta.days
+
+    else:
+        raise Exception("Wrong inputs.")
 
 def downloadStockData():
 
+    logger.info("Download Stock Data Job started.")
     connection = DB.get_connection_mysql()
     dao_tickers = DAO_Tickers(connection)
     dao_tickers_data = DAO_TickersData(connection)
@@ -163,7 +175,7 @@ def downloadStockData():
                         value = statement[date].get(valuation_name, None)
                         if value != None:
                             found = True
-                            dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date)
+                            dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date.date())
                     if found == True:
                         break
 
@@ -176,7 +188,7 @@ def downloadStockData():
                         value = statement[date].get(valuation_name, None)
                         if value != None:
                             found = True
-                            dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date)
+                            dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date.date())
                     if found == True:
                         break
 
@@ -224,6 +236,7 @@ def downloadStockData():
         except Exception as err:
             logger.exception(f"Error updating ticker[{ticker.ticker_id}]:")
             continue
+    logger.info("Download Stock Data Job finished.")
            
 
 
@@ -250,9 +263,10 @@ if __name__ == "__main__":
     #day_of_week='mon-fri': Execute the task only on weekdays
 
     #scheduler.add_job(notify_earnings, 'cron', second='*/10')
-    #scheduler.add_job(downloadStockData, 'cron', day='*/1') # day_of_week='mon-fri'
+    #scheduler.add_job(downloadStockData, 'cron',day_of_week='mon-fri', hour=0, minute=30) # day_of_week='mon-fri'
     downloadStockData()
     #scheduler.start()
+    logger.info("Schedulers started.")
 
 with socketserver.TCPServer(("", PORT), Handler) as httpd:
     print(f"Serving at port {PORT}")

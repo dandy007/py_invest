@@ -16,6 +16,7 @@ tests
 
 
 Actual
+- dopocitavat tickery - sectory, industry, cely market
 - outlook zrejme manualne z earnings
 - statistika rocnich/quarter poklesu/rustu ceny vzhledem k atualni cene
 - create empty records for records with errors, store error code and date of last update (tickers and tickers_data)

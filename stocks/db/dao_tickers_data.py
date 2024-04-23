@@ -1,5 +1,5 @@
 import mysql
-from datetime import datetime, date
+import datetime
 from .row_tickers_data import ROW_TickersData
 from mysql.connector.pooling import PooledMySQLConnection
 from .db import DB
@@ -44,12 +44,15 @@ class DAO_TickersData:
         return
 
     def store_ticker_data(self, ticker_id, type, value, date):
+        if date == None:
+            date = datetime.date.today()
         if value != None and type != None:
             record = self.get_data(ticker_id, type, date)
             if  record != None:
-                if value != None:
+                if value != None and value != record.value and record.date != date:
+                    record.date = date
                     record.value = value
-                    self.update_ticker_data(record, True)
+                    self.insert_ticker_data(record, True)
                 
             elif value not in (None, ''):
                 if math.isnan(value):
@@ -57,7 +60,7 @@ class DAO_TickersData:
                 ticker_data = ROW_TickersData()
                 ticker_data.ticker_id = ticker_id
                 if date == None:
-                    ticker_data.date = datetime.today()
+                    ticker_data.date = date
                 else:
                     ticker_data.date = date
                 ticker_data.type = type
@@ -100,7 +103,7 @@ class DAO_TickersData:
             print("Error selecting data:", err)    
             raise err         
         
-    def select_ticker_data(self, ticker_id, date: date) -> ROW_TickersData :
+    def select_ticker_data(self, ticker_id, date: datetime.date) -> ROW_TickersData :
         try:
             sql = f"select * from tickers_data where ticker_id='{ticker_id}' and date='{date}' LIMIT 1"
             self.cursor.execute(sql)
