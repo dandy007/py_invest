@@ -14,6 +14,7 @@ class ROW_Tickers:
     div_yield = None
     payout_ratio = None
     growth_rate_5y = None
+    earnings_date = None
 
     def __init__(self, ticker_id, name, industry, sector, isin):
         self.ticker_id = ticker_id

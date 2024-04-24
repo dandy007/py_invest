@@ -99,13 +99,20 @@ def downloadStockData():
             continue
 
         time.sleep(2)
-        #ticker.ticker_id = 'A'
+        #ticker.ticker_id = 'AAPL'
+        pd.set_option('display.max_rows', None)
         stock = yf.Ticker(ticker.ticker_id)
         try:
             name = stock.info.get('name', None)
             sector = stock.info.get('sector', None)
             industry = stock.info.get('industry', None)
             isin = stock.isin
+
+            earnings_date = None
+            earnings_dates = stock.calendar.get('Earnings Date', None)
+            if earnings_dates != None:
+                if len(earnings_dates) > 0:
+                    earnings_date = earnings_dates[0]
 
             shares = stock.info.get('sharesOutstanding', None)
             enterpriseValue = stock.info.get('enterpriseValue', None)
@@ -131,6 +138,8 @@ def downloadStockData():
                 ticker.industry = industry
             if isin != None:
                 ticker.isin = isin
+            if earnings_date != None:
+                ticker.earnings_date = earnings_date
 
             dict_data = {
                 TICKERS_TIME_DATA__TYPE__CONST.MARKET_CAP: market_cap,
@@ -165,7 +174,6 @@ def downloadStockData():
             dao_tickers.update_ticker_types(ticker, dict_data, True)
 
             # Store fundamental statements data - annual
-            pd.set_option('display.max_rows', None)
             statements = [stock.income_stmt, stock.balance_sheet, stock.cash_flow]
             
             for valuation_name, type in FUNDAMENTAL_NAME__TO_TYPE__ANNUAL.items():
