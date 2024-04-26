@@ -102,17 +102,26 @@ class DAO_TickersData:
         except mysql.connector.Error as err:
             print("Error selecting data:", err)    
             raise err         
-        
-    def select_ticker_data(self, ticker_id, date: datetime.date) -> ROW_TickersData :
+    
+    def select_ticker_data(self, ticker_id: str, type: int, limit: int) -> list[ROW_TickersData] :
         try:
-            sql = f"select * from tickers_data where ticker_id='{ticker_id}' and date='{date}' LIMIT 1"
+            if limit == -1:
+                limit = 1000000
+            sql = f"select date, value from tickers_time_data where ticker_id='{ticker_id}' and type='{type}' order by date DESC LIMIT {limit}"
             self.cursor.execute(sql)
-            row = self.cursor.fetchone()
+            rows = self.cursor.fetchall()
 
-            if row :
-                return ROW_TickersData(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12], row[13], row[14])
-            else:
-                return None
+            result_list = []
+
+            for row in rows:
+                data = ROW_TickersData()
+                data.ticker_id = ticker_id
+                data.type = type
+                data.date = row[0]
+                data.value = row[1]
+                result_list.append(data)
+
+            return result_list
 
         except mysql.connector.Error as err:
             print("Error selecting data:", err)    

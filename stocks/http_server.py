@@ -10,6 +10,8 @@ import mysql.connector
 import requests
 from lxml import html
 import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression
 from db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, TICKERS_TIME_DATA__TYPE__CONST, FUNDAMENTAL_NAME__TO_TYPE__ANNUAL, FUNDAMENTAL_NAME__TO_TYPE__QUATERLY
 
 from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
@@ -53,8 +55,209 @@ Handler = http.server.SimpleHTTPRequestHandler
 
 #logging.basicConfig(filename='invest.log', filemode='w', level=logging.DEBUG, format='%(name)s - %(levelname)s - %(message)s')
 
+def predict_growth_rate(x : list[float], y : list[float]) -> list[float]:
+
+    x_array = np.array(x).reshape(-1, 1)
+    y_array = np.array(y)
+
+    model = LinearRegression()
+    model.fit(x_array, y_array)
+
+    predicted_y = model.predict(x_array)
+
+    len_x = len(x)
+    r_squared = model.score(x_array, y_array) # 0-1 - 0.7 - 1.0 celkem dobry
+
+    last_y = y_array[-1]
+    if (predicted_y[-2] == 0):
+        return [0, 0]
+    growth_rate = ((predicted_y[-1] - predicted_y[-2]) / abs(predicted_y[-2]))
+
+    return [growth_rate, r_squared]
+
+def prepare_growth_data(list: list[ROW_TickersData]) -> list[list]:
+
+    x = []
+    y = []
+
+    for data in list:
+        data : ROW_TickersData
+        if data.value not in (0, None, ''):
+            x.append(len(x) + 1)
+            y.insert(0, data.value)   # !!!!! !!!!!! prevracene poradi
+
+    if len(y) < 3:
+        return None
+    else: 
+        return [x, y]
+
+def valuate_stocks():
+    logger.info("Download Stock Data Job started.")
+    connection = DB.get_connection_mysql()
+    dao_tickers = DAO_Tickers(connection)
+    dao_tickers_data = DAO_TickersData(connection)
+
+    tickers = dao_tickers.select_tickers_all()
+
+    for ticker in tickers:
+        #ticker.ticker_id = 'AREC'
+        years_back = 5
+        y_eps_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS, years_back)
+        y_revenue_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE, years_back)
+        y_flow_cont_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION, years_back)
+        y_ebitda_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA, years_back)
+        y_fcf_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, years_back)
+        y_gross_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT, years_back)
+
+        quarters_back = 8
+        q_eps_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS_Q, quarters_back)
+        q_revenue_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, quarters_back)
+        q_flow_cont_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION_Q, quarters_back)
+        q_ebitda_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA_Q, quarters_back)
+        q_fcf_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, quarters_back)
+        q_gross_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT_Q, quarters_back)
+        
+        growth_list = []
+        r_square_list = []
+        
+        prepared_list = prepare_growth_data(y_eps_list)
+        if prepared_list != None: 
+            growth_eps = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(growth_eps[0])
+            r_square_list.append(growth_eps[1] ** 2)
+            #print(f"EPS({ticker.ticker_id}): {growth_eps}")
+
+        prepared_list = prepare_growth_data(y_revenue_list)
+        if prepared_list != None: 
+            growth_revenue = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(growth_revenue[0])
+            r_square_list.append(growth_revenue[1] ** 2)
+            #print(f"Revenue({ticker.ticker_id}): {growth_revenue}")
+
+        prepared_list = prepare_growth_data(y_flow_cont_list)
+        if prepared_list != None: 
+            cont_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(cont_growth[0])
+            r_square_list.append(cont_growth[1] ** 2)
+            #print(f"Cont_FLOW({ticker.ticker_id}): {cont_growth}")
+
+        prepared_list = prepare_growth_data(y_ebitda_list)
+        if prepared_list != None: 
+            ebitda_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(ebitda_growth[0])
+            r_square_list.append(ebitda_growth[1] ** 2)
+            #print(f"EBITDA({ticker.ticker_id}): {ebitda_growth}")
+
+        prepared_list = prepare_growth_data(y_fcf_list)
+        if prepared_list != None: 
+            fcf_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(fcf_growth[0])
+            r_square_list.append(fcf_growth[1] ** 2)
+            #print(f"FCF({ticker.ticker_id}): {fcf_growth}")
+
+        prepared_list = prepare_growth_data(y_gross_list)
+        if prepared_list != None: 
+            gross_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(gross_growth[0])
+            r_square_list.append(gross_growth[1] ** 2)
+            #print(f"Gross({ticker.ticker_id}): {gross_growth}")
+
+        data = {
+            'Growth Rate': growth_list,  # Růstové koeficienty
+            'R-squared': r_square_list  # Hodnoty R^2
+        }
+
+        if len(growth_list) != 6:
+            continue
+
+        df = pd.DataFrame(data)
+        df['Weighted Growth'] = df['Growth Rate'] * df['R-squared']
+        weighted_average_growth_a = df['Weighted Growth'].sum() / df['R-squared'].sum()
+        #print(f"Final growth Annual({ticker.ticker_id}): {weighted_average_growth_a}")
+        stability_a = df['R-squared'].sum()
+        print(f"Stability Annual({ticker.ticker_id}): {stability_a}")
+
+        growth_list = []
+        r_square_list = []
+
+        prepared_list = prepare_growth_data(q_eps_list)
+        if prepared_list != None: 
+            growth_eps = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(growth_eps[0])
+            r_square_list.append(growth_eps[1] ** 2)
+            #print(f"EPS({ticker.ticker_id}): {growth_eps}")
+
+        prepared_list = prepare_growth_data(q_revenue_list)
+        if prepared_list != None: 
+            growth_revenue = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(growth_revenue[0])
+            r_square_list.append(growth_revenue[1] ** 2)
+            #print(f"Revenue({ticker.ticker_id}): {growth_revenue}")
+
+        prepared_list = prepare_growth_data(q_flow_cont_list)
+        if prepared_list != None: 
+            cont_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(cont_growth[0])
+            r_square_list.append(cont_growth[1] ** 2)
+            #print(f"Cont_FLOW({ticker.ticker_id}): {cont_growth}")
+
+        prepared_list = prepare_growth_data(q_ebitda_list)
+        if prepared_list != None: 
+            ebitda_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(ebitda_growth[0])
+            r_square_list.append(ebitda_growth[1] ** 2)
+            #print(f"EBITDA({ticker.ticker_id}): {ebitda_growth}")
+
+        prepared_list = prepare_growth_data(q_fcf_list)
+        if prepared_list != None: 
+            fcf_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(fcf_growth[0])
+            r_square_list.append(fcf_growth[1] ** 2)
+            #print(f"FCF({ticker.ticker_id}): {fcf_growth}")
+
+        prepared_list = prepare_growth_data(q_gross_list)
+        if prepared_list != None: 
+            gross_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(gross_growth[0])
+            r_square_list.append(gross_growth[1] ** 2)
+            #print(f"Gross({ticker.ticker_id}): {gross_growth}")
+
+        if len(growth_list) != 6:
+            continue
+
+        data = {
+            'Growth Rate': growth_list,  # Růstové koeficienty
+            'R-squared': r_square_list  # Hodnoty R^2
+        }
+
+        # Vytvoření DataFrame z dat
+        df = pd.DataFrame(data)
+        df['Weighted Growth'] = df['Growth Rate'] * df['R-squared']
+        weighted_average_growth_Q = df['Weighted Growth'].sum() / df['R-squared'].sum()
+        stability_q = df['R-squared'].sum()
+        #print(f"Final growth Quaterly({ticker.ticker_id}): {weighted_average_growth_Q *4}")
+        #print(f"Stability Quaterly({stability_q}")
+        growth_rate_combined = (weighted_average_growth_Q *4* 0.3) + (weighted_average_growth_a * 0.7)
+        print(f"Final growth({ticker.ticker_id}) : {growth_rate_combined}")
+
+        dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.WEIGHTED_GROWTH_RATE__ANNUAL, weighted_average_growth_a, y_revenue_list[0].date)
+        dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.WEIGHTED_GROWTH_RATE__QUATERLY, weighted_average_growth_Q, q_revenue_list[0].date)
+        dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.WEIGHTED_GROWTH_RATE_STABILITY__ANNUAL, stability_a, y_revenue_list[0].date)
+        dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.WEIGHTED_GROWTH_RATE_COMBINED__ANNUAL, growth_rate_combined, y_revenue_list[0].date)
+        dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.WEIGHTED_GROWTH_RATE_STABILITY__QUATERLY, stability_q, q_revenue_list[0].date)
+
+        dict_data = {
+                TICKERS_TIME_DATA__TYPE__CONST.GROWTH_RATE: weighted_average_growth_a,
+                TICKERS_TIME_DATA__TYPE__CONST.GROWTH_RATE_COMBINED: growth_rate_combined,
+                TICKERS_TIME_DATA__TYPE__CONST.GROWTH_RATE_STABILITY: stability_a
+        }
+
+        dao_tickers.update_ticker_types(ticker, dict_data, True)
+        print(f"Updated GROWTH on {ticker.ticker_id}")
 
 
+        
+        
 
 def notify_earnings():
     print(f"Task Notify_Earnings executed at: {datetime.datetime.now()}")
@@ -272,7 +475,8 @@ if __name__ == "__main__":
 
     #scheduler.add_job(notify_earnings, 'cron', second='*/10')
     #scheduler.add_job(downloadStockData, 'cron',day_of_week='mon-fri', hour=0, minute=30) # day_of_week='mon-fri'
-    downloadStockData()
+    #downloadStockData()
+    valuate_stocks()
     #scheduler.start()
     logger.info("Schedulers started.")
 
