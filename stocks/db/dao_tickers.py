@@ -97,6 +97,21 @@ class DAO_Tickers:
 
         except mysql.connector.Error as err:
             print("Error selecting data:", err)    
+            raise err
+        
+    def select_tickers_where(self, where: str) -> list[ROW_Tickers] :
+        try:
+            self.cursor.execute(f"select * from tickers where {where}")
+            all_db_tickers = self.cursor.fetchall()
+
+            result = []
+            for row in all_db_tickers:
+                result.append(ROW_Tickers(row[0], row[1], row[2], row[3], row[4]))
+
+            return result
+
+        except mysql.connector.Error as err:
+            print("Error selecting data:", err)    
             raise err         
         
     def select_ticker(self, ticker_id) -> ROW_Tickers :
@@ -105,7 +120,11 @@ class DAO_Tickers:
             self.cursor.execute(sql)
             row = self.cursor.fetchone()
 
-            return ROW_Tickers(row[0], row[1], row[2], row[3], row[4])
+            ticker = ROW_Tickers(row[0], row[1], row[2], row[3], row[4])
+            ticker.pe = row[8]
+            ticker.price = row[6]
+
+            return ticker
 
         except mysql.connector.Error as err:
             print("Error selecting data:", err)    

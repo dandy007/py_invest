@@ -18,13 +18,13 @@ tests
 Actual
 - dopocitavat tickery - sectory, industry, cely market
 - outlook zrejme manualne z earnings
+- ulozit marze
+- log per job
+- https://site.financialmodelingprep.com/developer/docs#historical-rating-company-information - 250 calls / day 
+    - https://financialmodelingprep.com/api/v3/key-metrics/AAPL?period=annual&limit=200&apikey=7616470a2bfe356d3a41f9006631ea5b - valuacni metriky annualy / 5 let; pe, pb, ps, ..... spocist prumer za 5 let, porovnat s aktualni valuaci - % podhodnoceni, volatilita valuace (potencial vzrustu)
 - statistika rocnich/quarter poklesu/rustu ceny vzhledem k atualni cene
 - create empty records for records with errors, store error code and date of last update (tickers and tickers_data)
-- growth_rate_5y - asi selenium - mozna si spocitam ze svych dat
 - pb, pe, ps, pfcf - actual vs 5y average, pro vypocet historickych p/x je potreba ulozit historicke ceny, spocitat eventualni rust pri navratu k prumeru + vazeny prumer vsech techto hodnot
-- growth statistiky - linearni regrese pro nekolik parametru (revenue, eps, gross profit), vyhodnotit jejich linearnost a podle toho dat vahy jednotlivym parametrum ve vazenem prumeru vsech growth
-    - income statement - EBITDA, Net Income, Basic EPS, Gross Profit, Total Revenue
-    - cashflow statement - Free Cash Flow, Net Income From Continuing Operations, Cash Flow From Continuing Operating Activities
 - AI - predam list tickeru, funkci jak prevzit valuacni a dalsi udaje z db/internetu - zhodnoti co je nejlepsi nakoupit a za jakou cenu
      - 2 agenti - 1 ktery vyhodnocuje rizika, pesimisticky, 1 ktery je optimista a vyhodnocuje potencialni rust, musi se dohodnout na kompromisu a vydat vysledek zda a za kolik nakoupit
 

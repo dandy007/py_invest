@@ -34,6 +34,21 @@ class DAO_TickersData:
             self.conn.commit()
         return
     
+    def bulk_insert_ticker_data(self, ticker_data_row_list: list[ROW_TickersData], forceCommit: bool):
+        sql = f"INSERT INTO {self.table_name}" \
+        f" (ticker_id, date, type, value)" \
+        f" VALUES(%s, %s, %s, %s)"
+
+        values = []
+        for ticker_data_row in ticker_data_row_list:
+            ticker_data_row: ROW_TickersData
+            values.append((ticker_data_row.ticker_id, ticker_data_row.date, ticker_data_row.type, ticker_data_row.value))
+
+        self.cursor.executemany(sql, values)
+        if forceCommit:
+            self.conn.commit()
+        return
+    
     def update_ticker_data(self, ticker_data_row: ROW_TickersData, forceCommit: bool):
         sql = f"UPDATE {self.table_name}" \
         f" SET value=%s where ticker_id=%s and type=%s and date=%s" 
@@ -43,7 +58,7 @@ class DAO_TickersData:
             self.conn.commit()
         return
 
-    def store_ticker_data(self, ticker_id, type, value, date):
+    def store_ticker_data(self, ticker_id: str, type: int, value: float, date: datetime.date):
         if date == None:
             date = datetime.date.today()
         if value != None and type != None:
