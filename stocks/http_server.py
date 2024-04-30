@@ -57,7 +57,7 @@ Handler = http.server.SimpleHTTPRequestHandler
 #logging.basicConfig(filename='invest.log', filemode='w', level=logging.DEBUG, format='%(name)s - %(levelname)s - %(message)s')
 
 def download_prices():
-    logger.info("Download Valuation Data Job started.")
+    logger.info("Download Prices Data Job started.")
     connection = DB.get_connection_mysql()
     dao_tickers = DAO_Tickers(connection)
     dao_tickers_data = DAO_TickersData(connection)
@@ -103,11 +103,11 @@ def download_prices():
 
         dao_tickers_data.bulk_insert_ticker_data(rows_price, True)
         dao_tickers_data.bulk_insert_ticker_data(rows_volume, True)
-        logger.info(f"Updated {ticker.ticker_id}")
+        logger.info(f"Download Prices: Updated {ticker.ticker_id}")
 
 
 def calc_valuation_stocks():
-    logger.info("Download Valuation Data Job started.")
+    logger.info("Calc Valuation Data Job started.")
     connection = DB.get_connection_mysql()
     dao_tickers = DAO_Tickers(connection)
     dao_tickers_data = DAO_TickersData(connection)
@@ -120,7 +120,7 @@ def calc_valuation_stocks():
         list_data = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, 5)
 
         if len(list_data) == 0 or info.pe == None:
-            logger.warning(f"Skipping {ticker.ticker_id}")
+            logger.warning(f"Calc Valuation: Skipping {ticker.ticker_id}")
             continue
 
         #list_data = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_EV_FCF__ANNUAL, 5)
@@ -148,7 +148,7 @@ def calc_valuation_stocks():
                     #TICKERS_TIME_DATA__TYPE__CONST.COMBINED_VALUATION: 2
         }
         dao_tickers.update_ticker_types(ticker, dict_data, True)
-        logger.info(f"Valuation({ticker.ticker_id})")
+        logger.info(f"Calc Valuation: Valuation({ticker.ticker_id})")
 
 def download_valuation_stocks():
 
@@ -185,7 +185,7 @@ def download_valuation_stocks():
             dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, metric.pfcf, metric.date)
             dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_POCF__ANNUAL, metric.pocf, metric.date)
         
-        print(f"Ticker({ticker.ticker_id})")
+        print(f"Download Valuation Ticker({ticker.ticker_id})")
 
 
 def predict_growth_rate(x : list[float], y : list[float]) -> list[float]:
@@ -225,7 +225,7 @@ def prepare_growth_data(list: list[ROW_TickersData]) -> list[list]:
         return [x, y]
 
 def estimate_growth_stocks():
-    logger.info("Download Stock Data Job started.")
+    logger.info("Estimate Growth Stock Data Job started.")
     connection = DB.get_connection_mysql()
     dao_tickers = DAO_Tickers(connection)
     dao_tickers_data = DAO_TickersData(connection)
@@ -233,7 +233,7 @@ def estimate_growth_stocks():
     tickers = dao_tickers.select_tickers_all()
 
     for ticker in tickers:
-        ticker.ticker_id = 'ABNB'
+        #ticker.ticker_id = 'ABNB'
         years_back = 5
         y_eps_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS, years_back)
         y_revenue_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE, years_back)
@@ -296,7 +296,7 @@ def estimate_growth_stocks():
             print(f"Gross({ticker.ticker_id}): {gross_growth}")
 
         data = {
-            'Growth Rate': growth_list,  # Růstové koeficienty
+            'Growth Rate': growth_list,  # Rustove koeficienty
             'R-squared': r_square_list  # Hodnoty R^2
         }
 
@@ -359,11 +359,11 @@ def estimate_growth_stocks():
             continue
 
         data = {
-            'Growth Rate': growth_list,  # Růstové koeficienty
+            'Growth Rate': growth_list,  # Rustove koeficienty
             'R-squared': r_square_list  # Hodnoty R^2
         }
 
-        # Vytvoření DataFrame z dat
+        # Vytvoreni DataFrame z dat
         df = pd.DataFrame(data)
         df['Weighted Growth'] = df['Growth Rate'] * df['R-squared']
         weighted_average_growth_Q = df['Weighted Growth'].sum() / df['R-squared'].sum()
@@ -434,7 +434,7 @@ def downloadStockData():
         if skip:
             continue
 
-        time.sleep(2)
+        #time.sleep(2)
         #ticker.ticker_id = 'AAPL'
         pd.set_option('display.max_rows', None)
         stock = yf.Ticker(ticker.ticker_id)
@@ -457,7 +457,7 @@ def downloadStockData():
             market_cap = stock.info.get('marketCap', None)
 
             if shares == None:
-                logger.warning(f"Skipping {ticker.ticker_id}")
+                logger.warning(f"Download Stock: Skipping {ticker.ticker_id}")
                 continue
 
             ps = None
@@ -519,7 +519,9 @@ def downloadStockData():
                         value = statement[date].get(valuation_name, None)
                         if value != None:
                             found = True
-                            dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date.date())
+                            inserted = dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date.date())
+                            if (inserted > 0):
+                                logger.info(f"!!! New fundamental data ({ticker.ticker_id})")
                     if found == True:
                         break
 
@@ -532,11 +534,13 @@ def downloadStockData():
                         value = statement[date].get(valuation_name, None)
                         if value != None:
                             found = True
-                            dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date.date())
+                            inserted = dao_tickers_data.store_ticker_data(ticker.ticker_id, type, value, date.date())
+                            if (inserted > 0):
+                                logger.info(f"!!! New fundamental data ({ticker.ticker_id})")
                     if found == True:
                         break
 
-            logger.info(f"Updated {ticker.ticker_id}")
+            logger.info(f"Download Stock: Updated {ticker.ticker_id}")
 
             #row.sector = stock.info['sector']
             #row.industry = stock.info['industry']
@@ -610,13 +614,15 @@ if __name__ == "__main__":
     scheduler.add_job(download_valuation_stocks, 'cron', hour=0, minute=30) # every day
     scheduler.add_job(download_prices, 'cron',day_of_week='tue-sat', hour=0, minute=30) # day_of_week='mon-fri'
     scheduler.add_job(downloadStockData, 'cron',day_of_week='tue-sat', hour=1, minute=0) # day_of_week='mon-fri'
+    scheduler.add_job(estimate_growth_stocks, 'cron', hour=11, minute=0) # day_of_week='mon-fri'
     scheduler.add_job(calc_valuation_stocks, 'cron', hour=11, minute=0) # every day
     #downloadStockData()
     #estimate_growth_stocks()
     #download_valuation_stocks()
-    #calc_valuation_stocks()
     #download_prices()
-    #scheduler.start()
+    #downloadStockData()
+    #calc_valuation_stocks()
+    scheduler.start()
     logger.info("Schedulers started.")
 
 with socketserver.TCPServer(("", PORT), Handler) as httpd:

@@ -58,7 +58,7 @@ class DAO_TickersData:
             self.conn.commit()
         return
 
-    def store_ticker_data(self, ticker_id: str, type: int, value: float, date: datetime.date):
+    def store_ticker_data(self, ticker_id: str, type: int, value: float, date: datetime.date) -> int:
         if date == None:
             date = datetime.date.today()
         if value != None and type != None:
@@ -68,6 +68,7 @@ class DAO_TickersData:
                     record.date = date
                     record.value = value
                     self.insert_ticker_data(record, True)
+                    return 1
                 
             elif value not in (None, ''):
                 if math.isnan(value):
@@ -81,7 +82,8 @@ class DAO_TickersData:
                 ticker_data.type = type
                 ticker_data.value = value
                 self.insert_ticker_data(ticker_data, True)
-        return     
+                return 1
+        return 0    
 
     def get_data(self, ticker_id, type, date) -> ROW_TickersData:
         if date == None:
