@@ -1,4 +1,5 @@
 import mysql
+import math
 from .row_tickers import ROW_Tickers
 from .constants import TICKERS__TYPE_TO_COLUMN__DICT
 from mysql.connector.pooling import PooledMySQLConnection
@@ -47,13 +48,15 @@ class DAO_Tickers:
         sql = f"update tickers set "
         values = []
         for type, value in types_dict.items():
-                if value not in (None, '', 'Infinity'):
+                if value not in (None, '', 'Infinity') and not math.isnan(value) :
                     type_column = TICKERS__TYPE_TO_COLUMN__DICT.get(type, None)
                     if type_column != None:
                         if len(values) > 0:
                             sql += ','
                         sql += f" {type_column}=%s"
                         values.append(value)
+        if len(values) == 0:
+            return
         where = f" where ticker_id = %s"
         values.append(ticker_row.ticker_id)
         sql = sql + where

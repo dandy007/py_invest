@@ -56,6 +56,64 @@ Handler = http.server.SimpleHTTPRequestHandler
 
 #logging.basicConfig(filename='invest.log', filemode='w', level=logging.DEBUG, format='%(name)s - %(levelname)s - %(message)s')
 
+def get_price_discount(ticker_id:str, length: int):
+    connection = DB.get_connection_mysql()
+    try:
+        dao_tickers_data = DAO_TickersData(connection)
+
+        list_prices = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, length)
+        list_volumes = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.VOLUME, length)
+
+        if len(list_prices) >= length:
+
+            pd_list = []
+            for price, volume in zip(list_prices, list_volumes):
+                pd_list.insert(0,{'Date': price.date, 'Close': price.value, 'Volume': volume.value})
+
+            df = pd.DataFrame(pd_list)
+
+            # Vytvoření nového sloupce 'VWAP' s váženými cenami
+            df['VWAP'] = df['Close'] * df['Volume']
+            # Výpočet sumy VWAP a sumy Volume pro dané období
+            sum_vwap = df['VWAP'].rolling(window=length).sum()
+            sum_volume = df['Volume'].rolling(window=length).sum()
+            df['Deviation'] = df['Close'] - df['VWAP']
+            #print(df['Deviation'].describe())
+            # Výpočet samotného VWMA
+            vwma = sum_vwap / sum_volume
+            #print(f"VWAP: {vwma.iloc[-1]}")
+            #print(f"Discount({ticker_id}): {(vwma.iloc[-1] - list_prices[0].value)/vwma.iloc[-1]}")
+            return (vwma.iloc[-1] - list_prices[0].value)/vwma.iloc[-1]
+    finally:
+        connection.close()
+
+def calculate_price_discount():
+    logger.info("Calculate price discount Job started.")
+    connection = DB.get_connection_mysql()
+    dao_tickers = DAO_Tickers(connection)
+    dao_tickers_data = DAO_TickersData(connection)
+
+    tickers = dao_tickers.select_tickers_all()
+
+    for ticker in tickers:
+        discount50 = get_price_discount(ticker.ticker_id, 50)
+        discount200 = get_price_discount(ticker.ticker_id, 200)
+        discount1000 = get_price_discount(ticker.ticker_id, 1000)
+
+        dict_data = {
+                TICKERS_TIME_DATA__TYPE__CONST.PRICE_DISCOUNT_1: discount50,
+                TICKERS_TIME_DATA__TYPE__CONST.PRICE_DISCOUNT_2: discount200,
+                TICKERS_TIME_DATA__TYPE__CONST.PRICE_DISCOUNT_3: discount1000
+        }
+
+        dao_tickers.update_ticker_types(ticker, dict_data, True)
+        logger.info(f"Discount({ticker.ticker_id})")
+        
+       
+
+
+
+
 def download_prices():
     logger.info("Download Prices Data Job started.")
     connection = DB.get_connection_mysql()
@@ -616,12 +674,14 @@ if __name__ == "__main__":
     scheduler.add_job(downloadStockData, 'cron',day_of_week='tue-sat', hour=1, minute=0) # day_of_week='mon-fri'
     scheduler.add_job(estimate_growth_stocks, 'cron', hour=11, minute=0) # day_of_week='mon-fri'
     scheduler.add_job(calc_valuation_stocks, 'cron', hour=11, minute=0) # every day
+    scheduler.add_job(calculate_price_discount, 'cron', hour=11, minute=0) # every day
     #downloadStockData()
     #estimate_growth_stocks()
     #download_valuation_stocks()
     #download_prices()
     #downloadStockData()
     #calc_valuation_stocks()
+    #calculate_price_discount()
     scheduler.start()
     logger.info("Schedulers started.")
 
