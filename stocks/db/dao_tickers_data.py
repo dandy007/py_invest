@@ -142,7 +142,24 @@ class DAO_TickersData:
 
         except mysql.connector.Error as err:
             print("Error selecting data:", err)    
-            raise err         
+            raise err  
+
+    def select_ticker_data_mean_stdev(self, ticker_id: str, type: int, limit: int) -> list[float] :
+        try:
+            if limit == -1:
+                limit = 1000000
+            sql = f"SELECT AVG(value) AS mean, STDDEV(value) AS std_dev FROM tickers_time_data where type = {type} and ticker_id = '{ticker_id}' LIMIT {limit}"
+            self.cursor.execute(sql)
+            rows = self.cursor.fetchone()
+
+            if len(rows) > 0:
+                return [rows[0],rows[1]]
+            
+            return None
+
+        except mysql.connector.Error as err:
+            print("Error selecting data:", err)    
+            raise err                
 
 if __name__ == "__main__":
         conn = DB.get_connection_mysql()

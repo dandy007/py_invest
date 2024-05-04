@@ -94,7 +94,25 @@ class DAO_Tickers:
 
             result = []
             for row in all_db_tickers:
-                result.append(ROW_Tickers(row[0], row[1], row[2], row[3], row[4]))
+                ticker = ROW_Tickers(row[0], row[1], row[2], row[3], row[4])
+                ticker.market_cap = row[5]
+                ticker.price = row[6]
+                ticker.target_price = row[7]
+                ticker.pe = row[8]
+                ticker.recomm_mean = row[9]
+                ticker.recomm_count = row[10]
+                ticker.div_yield = row[11]
+                ticker.payout_ratio = row[12]
+                ticker.growth_rate = row[13]
+                ticker.earnings_date = row[14]
+                ticker.growth_rate_stability = row[15]
+                ticker.growth_rate_comb = row[16]
+                ticker.pe_valuation = row[17]
+                ticker.comb_valuation = row[18]
+                ticker.price_discount_1 = row[19]
+                ticker.price_discount_2 = row[20]
+                ticker.price_discount_3 = row[21]
+                result.append(ticker)
 
             return result
 

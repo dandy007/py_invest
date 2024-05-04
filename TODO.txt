@@ -16,6 +16,8 @@ tests
 
 
 Actual
+- insider transakce
+- dopocitat denni pe ratio podle annual/qtrly pe a continualni ceny
 - dopocitavat tickery - sectory, industry, cely market
 - outlook zrejme manualne z earnings
 - zjisteni zda jsou nove kvartalni/annual vysledky dle nacteni vsech dat za posledni x dni/weeks
