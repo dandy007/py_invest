@@ -1,0 +1,8 @@
+yfinance
+mysql-connector-python
+scikit-learn
+icalendar
+apscheduler
+python-dotenv
+flask
+bokeh

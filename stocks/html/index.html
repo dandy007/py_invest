@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Trading Chart</title>
+    <!-- TradingView Widget BEGIN -->
+    
+    <!-- TradingView Widget END -->
+</head>
+<body>
+    {% for job in jobs %}
+    {{job}}<br>
+    {% endfor %}
+    <div id="tradingview_9fc46" style="height: 500px;"></div>
+</body>
+<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script type="text/javascript">
+        new TradingView.widget({
+            "autosize": true,
+            "symbol": "AAPL",
+            "interval": "4H",
+            "timezone": "Etc/UTC",
+            "theme": "light",
+            "style": "1",
+            "locale": "en",
+            "toolbar_bg": "#f1f3f6",
+            "enable_publishing": false,
+            "allow_symbol_change": true,
+            "container_id": "tradingview_9fc46"
+        });
+    </script>
+</html>

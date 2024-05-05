@@ -13,14 +13,20 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, TICKERS_TIME_DATA__TYPE__CONST, FUNDAMENTAL_NAME__TO_TYPE__ANNUAL, FUNDAMENTAL_NAME__TO_TYPE__QUATERLY
+from flask import Flask,render_template, render_template_string
 
 from data_providers.fmp import FMP, FMP_Metrics, FMPException_LimitReached
 from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
 from apscheduler.schedulers.background import BackgroundScheduler
 from exporters.ical_exporter import export_earnings
+from bokeh.plotting import figure
+from bokeh.io import output_file, show
+from bokeh.embed import file_html
+from bokeh.resources import CDN
 
 
-
+app = Flask(__name__, template_folder='html')
+scheduler = BackgroundScheduler()
 
 # Create a custom logger
 logger = logging.getLogger('invest_logger')
@@ -1014,11 +1020,46 @@ def get_option_growth_data(chain, date: str) -> float: # [month_price, year_pric
         #print(f"Avg price({ticker_id} - {date}): {sum/count}    {((sum/count) - yf_ticker.info['currentPrice']) / yf_ticker.info['currentPrice']}")
 
 
+@app.route('/chart')
+def bokeh_plot():
+    plot = figure(title="Apple", x_axis_label='Date', y_axis_label='Price', width=1600, height=800)
+
+    connection = DB.get_connection_mysql()
+    dao_tickers = DAO_Tickers(connection)
+    dao_tickers_data = DAO_TickersData(connection)
+    price_data_list = dao_tickers_data.select_ticker_data('AAPL', TICKERS_TIME_DATA__TYPE__CONST.PRICE, 500)
+    price_data_list.sort(key=lambda x : x.date, reverse=False)
+
+    date_list = []
+    price_list = []
+
+    count = 0
+    for price in price_data_list:
+        price : ROW_TickersData
+        count +=1
+        date_list.append(count)
+        price_list.append(price.value)
+
+    plot.line(date_list, price_list, line_width=1)
+    
+    # Embed plot into HTML via div element
+    html = file_html(plot, CDN, "my plot")
+    return render_template_string('<html><body>{{ plot_div | safe }}</body></html>', plot_div=html)
+
+
+@app.route('/')
+def main():
+    jobs = scheduler.get_jobs()
+    #for job in jobs:
+
+    return render_template('index.html', jobs=jobs)
+
 if __name__ == "__main__":
+    
     #tickerList = get_tickers_download()
     #for row in tickerList:
     #    print(f"Ticker: {row}")
-    scheduler = BackgroundScheduler()
+    #self.scheduler = BackgroundScheduler()
     #scheduler.add_job(my_task, 'interval', seconds=10)
 
     #cron
@@ -1050,9 +1091,13 @@ if __name__ == "__main__":
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
-    scheduler.start()
+
+    
+
+    #scheduler.start()
+    #app.run(debug=True)
     logger.info("Schedulers started.")
 
-with socketserver.TCPServer(("", PORT), Handler) as httpd:
-    print(f"Serving at port {PORT}")
-    httpd.serve_forever()
+#with socketserver.TCPServer(("", PORT), Handler) as httpd:
+#    print(f"Serving at port {PORT}")
+#    httpd.serve_forever()
