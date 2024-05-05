@@ -158,14 +158,14 @@ def get_price_discount(dao_tickers_data : DAO_TickersData, ticker_id:str, length
 
             df = pd.DataFrame(pd_list)
 
-            # Vytvoření nového sloupce 'VWAP' s váženými cenami
+            # Vytvoreni noveho sloupce 'VWAP' s vazenymi cenami
             df['VWAP'] = df['Close'] * df['Volume']
-            # Výpočet sumy VWAP a sumy Volume pro dané období
+            # Vypocet sumy VWAP a sumy Volume pro dane obdobi
             sum_vwap = df['VWAP'].rolling(window=length).sum()
             sum_volume = df['Volume'].rolling(window=length).sum()
             df['Deviation'] = df['Close'] - df['VWAP']
             #print(df['Deviation'].describe())
-            # Výpočet samotného VWMA
+            # Vypocet samotneho VWMA
             vwma = sum_vwap / sum_volume
             #print(f"VWAP: {vwma.iloc[-1]}")
             #print(f"Discount({ticker_id}): {(vwma.iloc[-1] - list_prices[0].value)/vwma.iloc[-1]}")
