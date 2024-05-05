@@ -17,6 +17,9 @@ from flask import Flask,render_template, render_template_string
 
 from data_providers.fmp import FMP, FMP_Metrics, FMPException_LimitReached
 from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
+from data_providers.polygon import POLYGON, RESTClient
+from data_providers.poly_fundamentals import POLY_CONSTANTS, FinancialStatement, CompanyReport, FinancialItem, FinancialReport
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from exporters.ical_exporter import export_earnings
 from bokeh.plotting import figure
@@ -1019,6 +1022,16 @@ def get_option_growth_data(chain, date: str) -> float: # [month_price, year_pric
     return None
         #print(f"Avg price({ticker_id} - {date}): {sum/count}    {((sum/count) - yf_ticker.info['currentPrice']) / yf_ticker.info['currentPrice']}")
 
+def polygon_load_fundaments():
+    poly = POLYGON()
+    #client = poly.get_polygon()
+
+    result = poly.get_fundamentals_raw('O', POLY_CONSTANTS.TIMEFRAME_QUATERLY)
+    result_1 = result.results[0]
+    fin = result.results[0].financials
+    print(result)
+
+    
 
 @app.route('/chart')
 def bokeh_plot():
@@ -1092,7 +1105,7 @@ if __name__ == "__main__":
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
 
-    
+    polygon_load_fundaments()
 
     #scheduler.start()
     #app.run(debug=True)
