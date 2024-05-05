@@ -5,7 +5,7 @@ from logging.handlers import RotatingFileHandler
 import datetime
 import yfinance as yf
 import time
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import mysql.connector
 import requests
 from lxml import html
@@ -247,6 +247,7 @@ def calculate_price_discount():
             dao_tickers.update_ticker_types(ticker, dict_data, True)
 
         logger.info(f"Discount({ticker.ticker_id})")
+    logger.info("Calculate price discount Job finished.")
         
        
 
@@ -301,6 +302,7 @@ def download_prices():
         dao_tickers_data.bulk_insert_ticker_data(rows_price, True)
         dao_tickers_data.bulk_insert_ticker_data(rows_volume, True)
         logger.info(f"Download Prices: Updated {ticker.ticker_id}")
+    logger.info("Download Prices Data Job finished.")
 
 
 def calc_valuation_stocks():
@@ -346,6 +348,7 @@ def calc_valuation_stocks():
         }
         dao_tickers.update_ticker_types(ticker, dict_data, True)
         logger.info(f"Calc Valuation: Valuation({ticker.ticker_id})")
+    logger.info("Calc Valuation Data Job finished.")
 
 def download_valuation_stocks():
 
@@ -382,7 +385,8 @@ def download_valuation_stocks():
             dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, metric.pfcf, metric.date)
             dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_POCF__ANNUAL, metric.pocf, metric.date)
         
-        print(f"Download Valuation Ticker({ticker.ticker_id})")
+        logger.info(f"Download Valuation Ticker({ticker.ticker_id})")
+    logger.info("Download Valuation Data Job finished.")
 
 
 def predict_growth_rate(x : list[float], y : list[float]) -> list[float]:
@@ -584,6 +588,7 @@ def estimate_growth_stocks():
 
         dao_tickers.update_ticker_types(ticker, dict_data, True)
         print(f"Updated GROWTH on {ticker.ticker_id}")
+    logger.info("Estimate Growth Stock Data Job finished.")
 
 
         
@@ -653,6 +658,8 @@ def downloadStockData():
             price = stock.info.get('currentPrice', None)
             market_cap = stock.info.get('marketCap', None)
 
+
+
             if shares == None:
                 logger.warning(f"Download Stock: Skipping {ticker.ticker_id}")
                 continue
@@ -705,6 +712,38 @@ def downloadStockData():
                     
             dao_tickers.update_ticker_base_data(ticker, True)
             dao_tickers.update_ticker_types(ticker, dict_data, True)
+
+            options = stock.options
+            today = datetime.today().date()
+            one_year_from_now = (today + timedelta(days=365)).strftime("%Y-%m-%d")
+            one_month_from_now = (today + timedelta(days=30)).strftime("%Y-%m-%d")
+
+            month_done = False
+            for option in options:
+                if month_done == False and (option > one_month_from_now):
+                    #print("one month")
+                    chain = stock.option_chain(option)
+                    future_price = get_option_growth_data(chain, option)
+                    if future_price != None:
+                        dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPTION_MONTH_AVG_PRICE, future_price, today)
+                        #print(future_price)
+                    month_done = True
+                    continue
+                    
+                if (option > one_year_from_now):
+                    #print("one year")
+                    chain = stock.option_chain(option)
+                    future_price = get_option_growth_data(chain, option)
+                    if future_price != None:
+                        if price not in (0, None):
+                            year_discount = (future_price - price) / price
+                            dict_data = {
+                                TICKERS_TIME_DATA__TYPE__CONST.OPTION_YEAR_DISCOUNT: year_discount
+                            }
+                            dao_tickers.update_ticker_types(ticker, dict_data, True)
+                        dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPTION_YEAR_AVG_PRICE, future_price, today)
+                        #print(future_price)
+                    break
 
             # Store fundamental statements data - annual
             statements = [stock.income_stmt, stock.balance_sheet, stock.cash_flow]
@@ -959,10 +998,20 @@ def calculate_continuous_metrics(earning_metric_const: int, metric_continuous_co
             dao_tickers_data.bulk_insert_ticker_data(new_data, True)
 
     logger.info("Continuous metrics Job finished.")
-            
 
+def get_option_growth_data(chain, date: str) -> float: # [month_price, year_price]
+    sum = 0
+    count = 0
+    for index, row in chain.calls.iterrows():
+        #print(f"Strike: {row['strike']}, Bid: {row['bid']}, Ask: {row['ask']}, Open Interest: {row['openInterest']}") #row['impliedVolatility']
+        sum += row['openInterest'] * row['strike']
+        count += row['openInterest']
 
+    if (count != 0):
+        return sum/count
     
+    return None
+        #print(f"Avg price({ticker_id} - {date}): {sum/count}    {((sum/count) - yf_ticker.info['currentPrice']) / yf_ticker.info['currentPrice']}")
 
 
 if __name__ == "__main__":
@@ -980,28 +1029,28 @@ if __name__ == "__main__":
     #day_of_week='mon-fri': Execute the task only on weekdays
 
     #scheduler.add_job(notify_earnings, 'cron', second='*/10')
-    #scheduler.add_job(download_valuation_stocks, 'cron', hour=0, minute=30,) # every day
-    #scheduler.add_job(download_prices, 'cron',day_of_week='tue-sat', hour=0, minute=30) # day_of_week='mon-fri'
-    #scheduler.add_job(downloadStockData, 'cron',day_of_week='tue-sat', hour=1, minute=0) # day_of_week='mon-fri'
-    #scheduler.add_job(estimate_growth_stocks, 'cron', hour=11, minute=0) # day_of_week='mon-fri'
-    #scheduler.add_job(calc_valuation_stocks, 'cron', hour=11, minute=0) # every day
-    #scheduler.add_job(calculate_price_discount, 'cron', hour=11, minute=0) # every day
-    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS]) # every day
-    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS]) # every day
-    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS]) # every day
+    scheduler.add_job(download_valuation_stocks, 'cron', hour=0, minute=30,) # every day
+    scheduler.add_job(download_prices, 'cron',day_of_week='tue-sat', hour=0, minute=30) # day_of_week='mon-fri'
+    scheduler.add_job(downloadStockData, 'cron',day_of_week='tue-sat', hour=1, minute=0) # day_of_week='mon-fri'
+    scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=11, minute=0) # day_of_week='mon-fri'
+    scheduler.add_job(calc_valuation_stocks, 'cron',day_of_week='tue-sat', hour=11, minute=0) # every day
+    scheduler.add_job(valuate_stocks, 'cron',day_of_week='tue-sat', hour=11, minute=0) # every day
+    scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=11, minute=0) # every day
+    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS]) # every day
+    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS]) # every day
+    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS]) # every day
     #downloadStockData()
     #estimate_growth_stocks()
     #download_valuation_stocks()
     #download_prices()
-    #downloadStockData()
     #calc_valuation_stocks()
-    calculate_price_discount()
+    #calculate_price_discount()
     #rank_stocks()
     #valuate_stocks()
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
-    #scheduler.start()
+    scheduler.start()
     logger.info("Schedulers started.")
 
 with socketserver.TCPServer(("", PORT), Handler) as httpd:
