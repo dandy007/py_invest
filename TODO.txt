@@ -17,6 +17,7 @@ tests
 
 Actual
 - insider transakce
+- valuation - DDM
 - https://polygon.io/docs/stocks/get_v3_reference_dividends - 5 calls / minute
 - https://polygon.io/docs/stocks/get_vx_reference_financials  - 5 calls / minute ale lze vratit celou historii najednou v jednom dotazu
 - include jmeno a popis firmy

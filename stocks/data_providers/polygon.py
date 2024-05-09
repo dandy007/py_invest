@@ -4,7 +4,7 @@ from datetime import datetime
 
 from polygon import RESTClient
 from dotenv import load_dotenv
-from .poly_fundamentals import FinancialReport, CompanyReport, FinancialItem, FinancialStatement, POLY_CONSTANTS
+from .poly_fundamentals import FinancialReport, CompanyReport, FinancialStatement, POLY_CONSTANTS
 
 load_dotenv()
 
@@ -37,8 +37,8 @@ class POLYGON:
 
             
 
-            report = FinancialReport(results=data['results'])
-            return report
+            #report = FinancialReport(results=data['results'])
+            #return report
         else:
             raise Exception(f"Failed to retrieve data. HTTP code: {response.status_code}")
 

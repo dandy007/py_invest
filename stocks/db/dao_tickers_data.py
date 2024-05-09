@@ -71,7 +71,7 @@ class DAO_TickersData:
                     return 1
                 
             elif value not in (None, ''):
-                if math.isnan(value):
+                if isinstance(value, (str)) == False and math.isnan(value):
                     value = 0
                 ticker_data = ROW_TickersData()
                 ticker_data.ticker_id = ticker_id

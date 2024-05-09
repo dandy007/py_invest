@@ -37,8 +37,8 @@ class DAO_Tickers:
         return    
 
     def update_ticker_base_data(self, ticker_row: ROW_Tickers, force_commit: bool):
-        sql = f"update tickers set name=%s, industry=%s, sector=%s, isin=%s, earnings_date=%s where ticker_id = %s"
-        values = (ticker_row.name, ticker_row.industry, ticker_row.sector, ticker_row.isin, ticker_row.earnings_date, ticker_row.ticker_id)
+        sql = f"update tickers set name=%s, industry=%s, sector=%s, isin=%s, earnings_date=%s, description=%s where ticker_id = %s"
+        values = (ticker_row.name, ticker_row.industry, ticker_row.sector, ticker_row.isin, ticker_row.earnings_date, ticker_row.description, ticker_row.ticker_id)
         self.cursor.execute(sql, values)
         if force_commit:
             self.conn.commit()

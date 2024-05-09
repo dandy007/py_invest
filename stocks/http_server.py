@@ -18,7 +18,7 @@ from flask import Flask,render_template, render_template_string
 from data_providers.fmp import FMP, FMP_Metrics, FMPException_LimitReached
 from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
 from data_providers.polygon import POLYGON, RESTClient
-from data_providers.poly_fundamentals import POLY_CONSTANTS, FinancialStatement, CompanyReport, FinancialItem, FinancialReport
+from data_providers.poly_fundamentals import POLY_CONSTANTS, FinancialStatement, CompanyReport, FinancialReport
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from exporters.ical_exporter import export_earnings
@@ -445,7 +445,7 @@ def estimate_growth_stocks():
     for ticker in tickers:
         #ticker.ticker_id = 'AAPL'
         years_back = 5
-        y_eps_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS, years_back)
+        y_net_income_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME, years_back)
         y_revenue_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE, years_back)
         y_flow_cont_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION, years_back)
         y_ebitda_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA, years_back)
@@ -453,22 +453,33 @@ def estimate_growth_stocks():
         y_gross_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT, years_back)
 
         quarters_back = 8
-        q_eps_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS_Q, quarters_back)
+        q_net_income_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_Q, quarters_back)
         q_revenue_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, quarters_back)
         q_flow_cont_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION_Q, quarters_back)
         q_ebitda_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA_Q, quarters_back)
         q_fcf_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, quarters_back)
         q_gross_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT_Q, quarters_back)
+
+        q_shares_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, 3 * 52 * 5) #2 years * 52 weeks * 5 days
+        growth_shares = None
+
+        shares_growth_per_year = None
+        if len(q_shares_list) > 250 and isinstance(q_shares_list[0].value, (int, float)) and isinstance(q_shares_list[-1].value, (int, float) ) and q_shares_list[-1].value != 0:
+            percent_change = (q_shares_list[0].value - q_shares_list[-1].value)/q_shares_list[-1].value
+            shares_growth_per_year = percent_change * (52 * 5) / len(q_shares_list) # 52 weeks * 5 days
+        
+        if shares_growth_per_year != None:
+            print(f"Shares({ticker.ticker_id}): {shares_growth_per_year}")
         
         growth_list = []
         r_square_list = []
         
-        prepared_list = prepare_growth_data(y_eps_list)
+        prepared_list = prepare_growth_data(y_net_income_list)
         if prepared_list != None: 
-            growth_eps = predict_growth_rate(prepared_list[0], prepared_list[1])
-            growth_list.append(growth_eps[0])
-            r_square_list.append(growth_eps[1] ** 2)
-            print(f"EPS({ticker.ticker_id}): {growth_eps}")
+            growth_net_income = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(growth_net_income[0])
+            r_square_list.append(growth_net_income[1] ** 2)
+            print(f"Net income({ticker.ticker_id}): {growth_net_income}")
 
         prepared_list = prepare_growth_data(y_revenue_list)
         if prepared_list != None: 
@@ -516,6 +527,8 @@ def estimate_growth_stocks():
         df = pd.DataFrame(data)
         df['Weighted Growth'] = df['Growth Rate'] * df['R-squared']
         weighted_average_growth_a = df['Weighted Growth'].sum() / df['R-squared'].sum()
+        if shares_growth_per_year != None:
+            weighted_average_growth_a = ((1 + weighted_average_growth_a) / (1 + shares_growth_per_year) ) - 1
         #print(f"Final growth Annual({ticker.ticker_id}): {weighted_average_growth_a}")
         stability_a = df['R-squared'].sum()
         print(f"Stability Annual({ticker.ticker_id}): {stability_a}")
@@ -523,12 +536,12 @@ def estimate_growth_stocks():
         growth_list = []
         r_square_list = []
 
-        prepared_list = prepare_growth_data(q_eps_list)
+        prepared_list = prepare_growth_data(q_net_income_list)
         if prepared_list != None: 
-            growth_eps = predict_growth_rate(prepared_list[0], prepared_list[1])
-            growth_list.append(growth_eps[0])
-            r_square_list.append(growth_eps[1] ** 2)
-            print(f"EPS({ticker.ticker_id}): {growth_eps}")
+            growth_net_income = predict_growth_rate(prepared_list[0], prepared_list[1])
+            growth_list.append(growth_net_income[0])
+            r_square_list.append(growth_net_income[1] ** 2)
+            print(f"Net income({ticker.ticker_id}): {growth_net_income}")
 
         prepared_list = prepare_growth_data(q_revenue_list)
         if prepared_list != None: 
@@ -634,16 +647,16 @@ def downloadStockData():
 
     #stock = yf.Ticker('AACT-U')
     
-    skip = True
+    #skip = True
     ticker_list = dao_tickers.select_tickers_all()
     for ticker in ticker_list:
         ticker:ROW_Tickers
 
-        if ticker.ticker_id == 'A':
-            skip = False
+        #if ticker.ticker_id == 'A':
+        #    skip = False
 
-        if skip:
-            continue
+        #if skip:
+        #    continue
 
         #time.sleep(2)
         #ticker.ticker_id = 'AAPL'
@@ -653,6 +666,7 @@ def downloadStockData():
             name = stock.info.get('name', None)
             sector = stock.info.get('sector', None)
             industry = stock.info.get('industry', None)
+            description = stock.info.get('longBusinessSummary', None)
             isin = stock.isin
 
             earnings_date = None
@@ -689,6 +703,8 @@ def downloadStockData():
                 ticker.isin = isin
             if earnings_date != None:
                 ticker.earnings_date = earnings_date
+            if description != None:
+                ticker.description = description #.replace("'", "")
 
             dict_data = {
                 TICKERS_TIME_DATA__TYPE__CONST.MARKET_CAP: market_cap,
@@ -910,6 +926,24 @@ def calculate_continuous_metrics(earning_metric_const: int, metric_continuous_co
         price_list.sort(key=lambda x: x.date, reverse=False)
         metric_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, earning_metric_const, years_back)
 
+        if earning_metric_const == TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS:
+            net_earnings_q_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME, years_back)
+            net_earnings_q_list.sort(key=lambda x: x.date, reverse=False)
+            eps_q_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS, years_back)
+            eps_q_list.sort(key=lambda x: x.date, reverse=False)
+            eps_counter = 0
+            for eps in eps_q_list:
+                for net_earnings in net_earnings_q_list:
+                    if eps.date != None and eps.date == net_earnings.date and isinstance(eps.value, (int, float)) and isinstance(net_earnings.value, (int, float)) and eps.value != 0:
+                        metric = ROW_TickersData()
+                        metric.date = eps.date
+                        metric.value = net_earnings.value / eps.value
+                        metric_list.append(metric)
+                        break
+                        
+                    
+            
+
         if (earning_metric_const == TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL):
             eps_q_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS_Q, years_back * (4 + 1))
             eps_q_list.sort(key=lambda x: x.date, reverse=False)
@@ -994,7 +1028,10 @@ def calculate_continuous_metrics(earning_metric_const: int, metric_continuous_co
                 #print(f"Skipping {record.date}")
                 continue 
 
-            metric = last_metric_record.value * (record.value / last_price)
+            if metric_continuous_const == TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS:
+                metric = last_metric_record.value
+            else:
+                metric = last_metric_record.value * (record.value / last_price)
             metric_record = ROW_TickersData()
             metric_record.date = record.date
             metric_record.ticker_id = ticker.ticker_id
@@ -1093,8 +1130,8 @@ if __name__ == "__main__":
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS]) # every day
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS]) # every day
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS]) # every day
-    #downloadStockData()
-    #estimate_growth_stocks()
+    downloadStockData()
+    
     #download_valuation_stocks()
     #download_prices()
     #calc_valuation_stocks()
@@ -1104,8 +1141,9 @@ if __name__ == "__main__":
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
-
-    polygon_load_fundaments()
+    #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS)
+    #estimate_growth_stocks()
+    #polygon_load_fundaments()
 
     #scheduler.start()
     #app.run(debug=True)

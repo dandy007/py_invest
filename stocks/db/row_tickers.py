@@ -2,6 +2,7 @@ class ROW_Tickers:
 
     ticker_id = None
     name = None
+    description = None
     industry = None
     sector = None
     isin = None
