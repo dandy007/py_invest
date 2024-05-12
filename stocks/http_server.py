@@ -1130,7 +1130,8 @@ if __name__ == "__main__":
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS]) # every day
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS]) # every day
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS]) # every day
-    downloadStockData()
+    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS]) # every day
+    #downloadStockData()
     
     #download_valuation_stocks()
     #download_prices()
@@ -1145,9 +1146,10 @@ if __name__ == "__main__":
     #estimate_growth_stocks()
     #polygon_load_fundaments()
 
-    #scheduler.start()
-    #app.run(debug=True)
+    scheduler.start()
     logger.info("Schedulers started.")
+    app.run(debug=True,host='0.0.0.0')
+    
 
 #with socketserver.TCPServer(("", PORT), Handler) as httpd:
 #    print(f"Serving at port {PORT}")

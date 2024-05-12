@@ -5,7 +5,7 @@ from win10toast import ToastNotifier
  
 def check_ip_port():
     try:
-        url = f"http://192.168.2.168:8080"
+        url = f"http://192.168.2.168:5000"
         response = requests.get(url, timeout=5)
         return response.status_code
     except requests.exceptions.RequestException:
