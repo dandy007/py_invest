@@ -18,10 +18,11 @@ tests
 Actual
 - insider transakce
 - valuation - DDM
+- seasonality
 - https://polygon.io/docs/stocks/get_v3_reference_dividends - 5 calls / minute
 - https://polygon.io/docs/stocks/get_vx_reference_financials  - 5 calls / minute ale lze vratit celou historii najednou v jednom dotazu
 - include jmeno a popis firmy
-- trendy do budoucna pomoci 1year option price
+- trendy do budoucna pomoci 1year option price ((sp500))
 - dopocitat denni pe ratio podle annual/qtrly pe a continualni ceny
 - dopocitavat tickery - sectory, industry, cely market
 - outlook zrejme manualne z earnings

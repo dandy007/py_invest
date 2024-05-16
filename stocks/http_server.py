@@ -12,8 +12,8 @@ from lxml import html
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, TICKERS_TIME_DATA__TYPE__CONST, FUNDAMENTAL_NAME__TO_TYPE__ANNUAL, FUNDAMENTAL_NAME__TO_TYPE__QUATERLY
-from flask import Flask,render_template, render_template_string
+from db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, DAO_Portfolios, ROW_Portfolios, ROW_PortfolioPositions, DAO_PortfolioPositions, TICKERS_TIME_DATA__TYPE__CONST, FUNDAMENTAL_NAME__TO_TYPE__ANNUAL, FUNDAMENTAL_NAME__TO_TYPE__QUATERLY
+from flask import Flask,render_template, render_template_string, request, redirect, url_for
 
 from data_providers.fmp import FMP, FMP_Metrics, FMPException_LimitReached
 from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
@@ -1103,6 +1103,77 @@ def main():
     #for job in jobs:
 
     return render_template('index.html', jobs=jobs)
+
+@app.route('/portfolios')
+def portfolios():
+
+    connection = DB.get_connection_mysql()
+    dao_portfolios = DAO_Portfolios(connection)
+    portfolios = dao_portfolios.select_all_portfolios()
+    return render_template('portfolios.html', portfolios = portfolios)
+
+@app.route('/portfolio/<int:portfolio_id>')
+def portfolio(portfolio_id):
+
+    connection = DB.get_connection_mysql()
+    dao_portfolios = DAO_Portfolios(connection)
+    dao_portfolio_positions = DAO_PortfolioPositions(connection)
+    portfolio = dao_portfolios.select_portfolio(portfolio_id)
+    positions = dao_portfolio_positions.select_all_portfolio_positions(portfolio_id)
+    return render_template('portfolio.html', positions = positions, portfolio = portfolio)
+
+@app.route('/portfolios/submit_new', methods=['POST'])
+def portfolios_submit_new():
+    name = request.form['name']
+
+    if (name not in (None, '')):
+        connection = DB.get_connection_mysql()
+        dao_portfolios = DAO_Portfolios(connection)
+        p = ROW_Portfolios(name)
+        dao_portfolios.insert_portfolio(p)
+
+    return redirect(url_for('portfolios'))
+
+@app.route('/portfolios/submit_delete', methods=['POST'])
+def portfolios_submit_delete():
+    id = request.form['id']
+
+    if (id not in (None, '')):
+        connection = DB.get_connection_mysql()
+        dao_portfolios = DAO_Portfolios(connection)
+        dao_portfolios.delete_portfolio(id)
+
+    return redirect(url_for('portfolios'))
+
+
+@app.route('/portfolio_positions/submit_new', methods=['POST'])
+def portfolio_positions_submit_new():
+    ticker_id = request.form['ticker_id']
+    portfolio_id = request.form['portfolio_id']
+
+    if (ticker_id not in (None, '') and portfolio_id not in (None, '')):
+        connection = DB.get_connection_mysql()
+        dao_portfolio_positions = DAO_PortfolioPositions(connection)
+        p = ROW_PortfolioPositions()
+        p.portfolio_id = portfolio_id
+        p.ticker_id = ticker_id
+        dao_portfolio_positions.insert_portfolio_position(p)
+
+    return redirect(url_for('portfolio',portfolio_id = portfolio_id))
+
+@app.route('/portfolio_positions/submit_delete', methods=['POST'])
+def portfolio_positions_submit_delete():
+    ticker_id = request.form['ticker_id']
+    portfolio_id = request.form['portfolio_id']
+
+    if (ticker_id not in (None, '') and portfolio_id not in (None, '')):
+        connection = DB.get_connection_mysql()
+        dao_portfolio_positions = DAO_PortfolioPositions(connection)
+        dao_portfolio_positions.delete_portfolio_position(portfolio_id=portfolio_id, ticker_id=ticker_id)
+
+    return redirect(url_for('portfolio', portfolio_id = portfolio_id))
+
+
 
 if __name__ == "__main__":
     

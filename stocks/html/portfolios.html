@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Portfolios</title>
+</head>
+<body>
+    <h1>Portfolios</h1>
+    <table>
+        {% for portfolio in portfolios %}
+        <tr>
+            <td>{{portfolio.portfolio_id}}</td>
+            <td><a href="./portfolio/{{portfolio.portfolio_id}}">{{portfolio.name}}</a></td>
+            <td>
+                <form action="{{ url_for('portfolios_submit_delete') }}" method="post">
+                    <input type="hidden" id="id" name="id" value="{{portfolio.portfolio_id}}" required>
+                    <input type="submit" value="Delete">
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    <form action="{{ url_for('portfolios_submit_new') }}" method="post">
+        <label for="name">Name:</label>
+        <input type="text" id="name" name="name" required>
+        <input type="submit" value="Submit">
+    </form>
+</body>
+</html>
