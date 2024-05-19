@@ -1,7 +1,7 @@
 import requests
 from icalendar import Calendar, Event
 from datetime import datetime, timedelta
-from data_providers.alpha_vantage import get_earnings_calendar
+from stocks.data_providers.alpha_vantage import get_earnings_calendar
 
 def export_ical_to_hook(ical):
     # Convert the iCalendar to a string

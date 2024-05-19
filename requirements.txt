@@ -7,3 +7,4 @@ python-dotenv
 flask
 bokeh
 polygon-api-client
+plotly

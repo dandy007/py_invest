@@ -23,11 +23,13 @@ class ROW_Tickers:
     price_discount_1 = None
     price_discount_2 = None
     price_discount_3 = None
+    eps_valuation = None
+    pe_discount = None
+    pb_discount = None
+    pfcf_discount = None
+    option_year_discount = None
+    beta = None
+    description = None
 
-
-    def __init__(self, ticker_id, name, industry, sector, isin):
-        self.ticker_id = ticker_id
-        self.name = name
-        self.industry = industry
-        self.sector = sector
-        self.isin = isin
+    def __init__(self):
+        pass

@@ -1,0 +1,1 @@
+from stocks.frontend.web_portfolio_position import ROW_WebPortfolioPosition

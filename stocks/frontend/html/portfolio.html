@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio {{portfolio.name}}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/css.css') }}">
+</head>
+<body>
+    <h1>Portfolio {{portfolio.name}}</h1>
+    <table class="styled-table">
+        <thead>
+            <th>Ticker</th>
+            <th>Name</th>
+            <th>Earnings date</th>
+
+            <th>Price</th>
+            <th>Target price</th>
+            <th>Option discount</th>
+            <th>Recomm</th>
+
+            <th>Growth</th>
+            <th>Growth stab.</th>
+
+            <th>Price disc 2</th>
+            <th>Price disc 3</th>
+            <th>PE disc</th>
+            <th>PB disc</th>
+            <th>PFCF disc</th>
+            
+            <th>Actions</th>
+        </thead>
+        {% for position in web_positions %}
+        <tr>
+            <td><a href="../ticker/{{position.db_ticker.ticker_id}}">{{position.db_ticker.ticker_id}}</a></td>
+            <td>{{position.db_ticker.name}}</td>
+            <td>{{position.db_ticker.earnings_date}}</td>
+            <td>{{position.db_ticker.price}}</td>
+            <td>{{position.db_ticker.target_price}}</td>
+            <td>{{position.db_ticker.option_year_discount | percentage}}</td>
+            <td>{{position.db_ticker.recomm_mean}} ({{position.db_ticker.recomm_count}})</td>
+            <td>{{position.db_ticker.growth_rate | percentage}}</td>
+            <td>{{position.db_ticker.growth_rate_stability}}</td>
+
+            <td>{{position.db_ticker.price_discount_2 | percentage}}</td>
+            <td>{{position.db_ticker.price_discount_3 | percentage}}</td>
+            <td>{{position.db_ticker.pe_discount | percentage}}</td>
+            <td>{{position.db_ticker.pb_discount | percentage}}</td>
+            <td>{{position.db_ticker.pfcf_discount | percentage}}</td>
+
+            
+            
+            <td>
+                <form action="{{ url_for('portfolio_positions_submit_delete') }}" method="post">
+                    <input type="hidden" id="ticker_id" name="ticker_id" value="{{position.db_ticker.ticker_id}}" required>
+                    <input type="hidden" id="portfolio_id" name="portfolio_id" value="{{portfolio.portfolio_id}}" required>
+                    <input type="submit" value="Delete">
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    <form action="{{ url_for('portfolio_positions_submit_new') }}" method="post">
+        <label for="name">Ticker:</label>
+        <input type="text" id="ticker_id" name="ticker_id" required>
+        <input type="hidden" id="portfolio_id" name="portfolio_id" value="{{portfolio.portfolio_id}}" required>
+        <input type="submit" value="Add">
+    </form>
+</body>
+</html>

@@ -94,24 +94,7 @@ class DAO_Tickers:
 
             result = []
             for row in all_db_tickers:
-                ticker = ROW_Tickers(row[0], row[1], row[2], row[3], row[4])
-                ticker.market_cap = row[5]
-                ticker.price = row[6]
-                ticker.target_price = row[7]
-                ticker.pe = row[8]
-                ticker.recomm_mean = row[9]
-                ticker.recomm_count = row[10]
-                ticker.div_yield = row[11]
-                ticker.payout_ratio = row[12]
-                ticker.growth_rate = row[13]
-                ticker.earnings_date = row[14]
-                ticker.growth_rate_stability = row[15]
-                ticker.growth_rate_comb = row[16]
-                ticker.pe_valuation = row[17]
-                ticker.comb_valuation = row[18]
-                ticker.price_discount_1 = row[19]
-                ticker.price_discount_2 = row[20]
-                ticker.price_discount_3 = row[21]
+                ticker = DAO_Tickers.mapRow2ROW_Tickers(row)
                 result.append(ticker)
 
             return result
@@ -127,7 +110,7 @@ class DAO_Tickers:
 
             result = []
             for row in all_db_tickers:
-                result.append(ROW_Tickers(row[0], row[1], row[2], row[3], row[4]))
+                result.append(DAO_Tickers.mapRow2ROW_Tickers(row))
 
             return result
 
@@ -141,15 +124,54 @@ class DAO_Tickers:
             self.cursor.execute(sql)
             row = self.cursor.fetchone()
 
-            ticker = ROW_Tickers(row[0], row[1], row[2], row[3], row[4])
-            ticker.pe = row[8]
-            ticker.price = row[6]
+            ticker = None
+
+            if row != None:
+                ticker = DAO_Tickers.mapRow2ROW_Tickers(row)
 
             return ticker
 
         except mysql.connector.Error as err:
             print("Error selecting data:", err)    
             raise err         
+
+    staticmethod
+    def mapRow2ROW_Tickers(row) -> ROW_Tickers:
+        ticker = ROW_Tickers()
+        ticker.ticker_id = row[0]
+        ticker.name = row[1]
+        ticker.industry = row[2]
+        ticker.sector = row[3]
+        ticker.isin = row[4]
+        ticker.market_cap = row[5]
+        ticker.price = row[6]
+        ticker.target_price = row[7]
+        ticker.pe = row[8]
+        ticker.recomm_mean = row[9]
+        ticker.recomm_count = row[10]
+        ticker.div_yield = row[11]
+        ticker.payout_ratio = row[12]
+        ticker.growth_rate = row[13]
+        ticker.earnings_date = row[14]
+        ticker.growth_rate_stability = row[15]
+        ticker.growth_rate_comb = row[16]
+        ticker.pe_valuation = row[17]
+        ticker.comb_valuation = row[18]
+        ticker.price_discount_1 = row[19]
+        ticker.price_discount_2 = row[20]
+        ticker.price_discount_3 = row[21]
+        ticker.eps_valuation = row[22]
+        ticker.pe_discount = row[23]
+        ticker.pb_discount = row[24]
+        ticker.pfcf_discount = row[25]
+        ticker.option_year_discount = row[26]
+        ticker.beta = row[27]
+        ticker.description = row[28]
+        return ticker
+
+
+        
+        
 
 if __name__ == "__main__":
         conn = DB.get_connection_mysql()

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Ticker {{ticker.ticker_id}}</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/css.css') }}">
+    </head>
+    <body>
+        <div class="content">
+            <div class="top_panel">
+                <div class="search_input">
+                    <form action="{{ url_for('ticker') }}" method="post" class="search_input">
+                        <input name="ticker_id" type="text" placeholder="Enter ticker" required>
+                    </form>
+                </div>
+                <div class="ticker_name">{{ticker.ticker_id}} - {{ticker.name}}</div>
+                <div class="ticker_price">{{ticker.price}}</div>
+            </div>
+            <div class="ticker_description">{{ticker.description}}</div>
+            <div class="parameters"></div>
+            <div class="charts">
+                <div class="prices">
+                    <div class="plot_container_25">{{plot_price | safe}}</div>
+                    <div class="plot_container_25">{{plot_target_price | safe}}</div> 
+                    <div class="plot_container_25">{{plot_option_price_1M | safe}}</div> 
+                    <div class="plot_container_25">{{plot_option_price_1Y | safe}}</div> 
+                </div>
+                <div class="valuation">
+                    <div class="plot_container_25">{{plot_pe | safe}}</div>
+                    <div class="plot_container_25">{{plot_ps | safe}}</div> 
+                    <div class="plot_container_25">{{plot_pb | safe}}</div> 
+                    <div class="plot_container_25">{{plot_pfcf | safe}}</div> 
+                </div>
+                <div class="fundamentals">
+                    <div class="plot_container_25">{{plot_income_statement | safe}}</div>
+                    <div class="plot_container_25">{{plot_balance_sheet | safe}}</div> 
+                    <div class="plot_container_25">{{plot_free_cash_flow_statement | safe}}</div> 
+                    <div class="plot_container_25">{{plot_shares | safe}}</div> 
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

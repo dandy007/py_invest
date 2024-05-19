@@ -1,0 +1,101 @@
+/* styles.css */
+.styled-table {
+    width: 100%;
+    border-collapse: separate; /* Use separate borders */
+    border-spacing: 10px; /* Space between cells */
+    border: 1px solid black; /* Border around the table */
+}
+
+.styled-table th, .styled-table td, .styled-table tr {
+    padding: 10px;
+    text-align: left;
+    background-color: #f8f8f8; /* Light gray background for cells */
+    border: 1px solid #ddd; /* Light gray border for cells */
+    font-size: small;
+}
+
+.styled-table th {
+    background-color: #f2f2f2; /* Slightly darker background for headers */
+}
+
+.styled-table a {
+    text-decoration: none;
+    color: blue; /* Color for links */
+}
+
+.content {
+    /*background-color: cyan;*/
+    width: 100%;
+    height: auto;
+}
+
+.top_panel {
+  /*  background-color: green;*/
+    height: 10%;
+    width: 100%;
+    display: flex;
+    align-items: center; /* Vertically center the items */
+    justify-content: space-between; /* Space the items evenly */
+}
+
+.search_input {
+    flex: 1; /* Make the search input flexible */
+    width: 100%;
+    height: 100%;
+}
+
+
+.search_input input {
+    width: 100%; /* Make the input take full width */
+}
+
+.ticker_name {
+    flex: 0 0 auto; /* Keep the width of these elements auto */
+    margin-left: 10px; /* Add some spacing between items */
+    width: 50%;
+    font-size: 50px;
+
+}
+
+.ticker_price {
+    flex: 0 0 auto; /* Keep the width of these elements auto */
+    margin-left: 10px; /* Add some spacing between items */
+    width: 20%;
+    font-size: 50px;
+}
+
+.parameters {
+    background-color: blue;
+    height: 10%;
+}
+
+.charts {
+    background-color: red;
+    height: 80%;
+}
+
+.prices {
+    background-color: magenta;
+    height: 15%;
+    display: flex;
+}
+
+.valuation {
+    background-color: pink;
+    height: 15%;
+    display: flex;
+}
+
+.fundamentals {
+    background-color: yellow;
+    height: 15%;
+    display: flex;
+}
+
+.plot_container_25 {
+    width: 25%; /* Make the plot container 25% of the viewport width */
+    height: 20%;
+    margin: 0 0; /* Center the plot container */
+    padding: 0;
+    flex: 0 0 auto; /* Keep the width of these elements auto */
+}

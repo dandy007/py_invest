@@ -12,23 +12,26 @@ from lxml import html
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, DAO_Portfolios, ROW_Portfolios, ROW_PortfolioPositions, DAO_PortfolioPositions, TICKERS_TIME_DATA__TYPE__CONST, FUNDAMENTAL_NAME__TO_TYPE__ANNUAL, FUNDAMENTAL_NAME__TO_TYPE__QUATERLY
+from stocks.db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, DAO_Portfolios, ROW_Portfolios, ROW_PortfolioPositions, DAO_PortfolioPositions, TICKERS_TIME_DATA__TYPE__CONST, FUNDAMENTAL_NAME__TO_TYPE__ANNUAL, FUNDAMENTAL_NAME__TO_TYPE__QUATERLY
 from flask import Flask,render_template, render_template_string, request, redirect, url_for
 
-from data_providers.fmp import FMP, FMP_Metrics, FMPException_LimitReached
-from data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
-from data_providers.polygon import POLYGON, RESTClient
-from data_providers.poly_fundamentals import POLY_CONSTANTS, FinancialStatement, CompanyReport, FinancialReport
+from stocks.data_providers.fmp import FMP, FMP_Metrics, FMPException_LimitReached
+from stocks.data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
+from stocks.data_providers.polygon import POLYGON, RESTClient
+from stocks.data_providers.poly_fundamentals import POLY_CONSTANTS, FinancialStatement, CompanyReport, FinancialReport
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from exporters.ical_exporter import export_earnings
+from stocks.exporters.ical_exporter import export_earnings
 from bokeh.plotting import figure
 from bokeh.io import output_file, show
 from bokeh.embed import file_html
 from bokeh.resources import CDN
 
+from stocks.frontend import ROW_WebPortfolioPosition
+import plotly.graph_objects as go
 
-app = Flask(__name__, template_folder='html')
+
+app = Flask(__name__, template_folder='frontend/html', static_folder='frontend/html/static')
 scheduler = BackgroundScheduler()
 
 # Create a custom logger
@@ -371,17 +374,26 @@ def download_valuation_stocks():
 
     metrics : list[FMP_Metrics] = None
     metric : FMP_Metrics = None
+    todayDate = date.today()
     for ticker in tickers:
         try:
             data_exists = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, 1)
-            if len(data_exists) > 0:
+            
+
+            if len(data_exists) > 0 and (todayDate - data_exists[-1].date).days > (366 + 92)  or len(data_exists) == 0:
+                metrics = fmp.get_metrics(ticker.ticker_id)
+                if len(metrics) == 0:
+                    dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, 0.0, todayDate)
+                    continue
+            else:
                 continue
-            metrics = fmp.get_metrics(ticker.ticker_id)
         except FMPException_LimitReached as e:
             logger.warning("Limit reached, job stopped.")
             return
 
         for metric in metrics:
+            if metric.date <= data_exists[0].date:
+                continue
             dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_DEBT_EBITDA__ANNUAL, metric.debt_ebitda, metric.date)
             dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_EV_FCF__ANNUAL, metric.ev_fcf, metric.date)
             dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_EV_EBITDA__ANNUAL, metric.ev_ebitda, metric.date)
@@ -710,7 +722,7 @@ def downloadStockData():
                 TICKERS_TIME_DATA__TYPE__CONST.MARKET_CAP: market_cap,
                 TICKERS_TIME_DATA__TYPE__CONST.ENTERPRISE_VALUE: enterpriseValue,
                 TICKERS_TIME_DATA__TYPE__CONST.SHARES_OUTSTANDING: shares,
-                #TICKERS_TIME_DATA__TYPE__CONST.PRICE: price,
+                TICKERS_TIME_DATA__TYPE__CONST.PRICE: price,
                 TICKERS_TIME_DATA__TYPE__CONST.TARGET_PRICE: stock.info.get('targetMeanPrice', None),
                 TICKERS_TIME_DATA__TYPE__CONST.EPS: stock.info.get('trailingEps', None),
                 TICKERS_TIME_DATA__TYPE__CONST.BOOK_PER_SHARE: stock.info.get('bookValue', None),
@@ -942,7 +954,35 @@ def calculate_continuous_metrics(earning_metric_const: int, metric_continuous_co
                         break
                         
                     
-            
+        if (earning_metric_const == TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__ANNUAL):
+            rev_q_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, years_back * (4 + 1))
+            shares_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, years_back * 300)
+            rev_q_list.sort(key=lambda x: x.date, reverse=False)
+            rev_counter = 0
+            num_shares = None
+            for rev in rev_q_list:
+                rev_counter += 1
+                for price in price_list:
+                    if rev_counter >= 4 and (isinstance(rev.value, (int, float)) and price.date >= rev.date):
+                        rev_value = 0
+                        for i in range(1, 5):
+                            if isinstance(rev_q_list[rev_counter-i].value, (int, float)):
+                                rev_value += rev_q_list[rev_counter-i].value
+                            else:
+                                rev_value = None
+                                break
+                        if (rev_value not in (0,  None)):
+                            metric = ROW_TickersData()
+                            metric.date = rev.date
+
+                            for shares in shares_list:
+                                if shares.date >= price.date:
+                                    num_shares = shares.value
+
+                            if num_shares not in (None, 0):
+                                metric.value = price.value / (rev_value / num_shares)
+                                metric_list.append(metric)
+                            break
 
         if (earning_metric_const == TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL):
             eps_q_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS_Q, years_back * (4 + 1))
@@ -1112,15 +1152,31 @@ def portfolios():
     portfolios = dao_portfolios.select_all_portfolios()
     return render_template('portfolios.html', portfolios = portfolios)
 
+
+@app.template_filter('percentage')
+def format_percentage(value):
+    if value == None:
+        return '0%'
+    return "{:.2%}".format(value)
+
 @app.route('/portfolio/<int:portfolio_id>')
 def portfolio(portfolio_id):
 
     connection = DB.get_connection_mysql()
     dao_portfolios = DAO_Portfolios(connection)
     dao_portfolio_positions = DAO_PortfolioPositions(connection)
+    dao_tickers = DAO_Tickers(connection)
     portfolio = dao_portfolios.select_portfolio(portfolio_id)
     positions = dao_portfolio_positions.select_all_portfolio_positions(portfolio_id)
-    return render_template('portfolio.html', positions = positions, portfolio = portfolio)
+    web_positions = []
+
+    for position in positions:
+        position: ROW_PortfolioPositions
+        ticker = dao_tickers.select_ticker(position.ticker_id)
+        web_position: ROW_WebPortfolioPosition = ROW_WebPortfolioPosition(ticker, position)
+        web_positions.append(web_position)
+
+    return render_template('portfolio.html', web_positions = web_positions, portfolio = portfolio)
 
 @app.route('/portfolios/submit_new', methods=['POST'])
 def portfolios_submit_new():
@@ -1153,11 +1209,15 @@ def portfolio_positions_submit_new():
 
     if (ticker_id not in (None, '') and portfolio_id not in (None, '')):
         connection = DB.get_connection_mysql()
+        dao_tickers = DAO_Tickers(connection)
         dao_portfolio_positions = DAO_PortfolioPositions(connection)
-        p = ROW_PortfolioPositions()
-        p.portfolio_id = portfolio_id
-        p.ticker_id = ticker_id
-        dao_portfolio_positions.insert_portfolio_position(p)
+
+        ticker = dao_tickers.select_ticker(ticker_id)
+        if ticker != None:
+            p = ROW_PortfolioPositions()
+            p.portfolio_id = portfolio_id
+            p.ticker_id = ticker_id
+            dao_portfolio_positions.insert_portfolio_position(p)
 
     return redirect(url_for('portfolio',portfolio_id = portfolio_id))
 
@@ -1173,6 +1233,175 @@ def portfolio_positions_submit_delete():
 
     return redirect(url_for('portfolio', portfolio_id = portfolio_id))
 
+def prepare_chart_data(ticker_data_list: list[ROW_TickersData]):
+    list_x = []
+    list_y = []
+
+    ticker_data_list.sort(key=lambda x: (x.date), reverse=True)
+
+    for ticker_data in ticker_data_list:
+        list_x.append(ticker_data.date)
+        list_y.append(ticker_data.value)
+
+    return [list_x, list_y]
+
+def getChart(x_data, y_data_lists, line_title_list, chart_title):
+    fig = go.Figure()
+
+    counter = 0
+    for y_data in y_data_lists:
+        fig.add_trace(go.Scatter(x=x_data, y=y_data, mode='lines', name=line_title_list[counter]))
+        counter += 1
+
+    fig.update_layout(title=chart_title)
+    fig_html = fig.to_html(full_html=False)
+    return fig_html
+
+@app.route('/ticker', methods=['POST'])
+def ticker():
+    ticker_ids = request.form['ticker_id']
+    return ticker_id(ticker_ids)
+
+@app.route('/ticker/<ticker_id>', methods=['GET'])
+def ticker_id(ticker_id: str):
+
+    connection = DB.get_connection_mysql()
+    dao_portfolios = DAO_Portfolios(connection)
+    dao_portfolio_positions = DAO_PortfolioPositions(connection)
+    dao_tickers = DAO_Tickers(connection)
+    dao_tickers_data = DAO_TickersData(connection)
+
+    days_back = 5 * 250
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, days_back)
+    prepared_chart_data__price = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TARGET_PRICE, days_back)
+    prepared_chart_data__target_price = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPTION_MONTH_AVG_PRICE, days_back)
+    prepared_chart_data__option_month_price = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPTION_YEAR_AVG_PRICE, days_back)
+    prepared_chart_data__option_year_price = prepare_chart_data(data_list)
+
+
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS, days_back)
+    prepared_chart_data__pe = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS, days_back)
+    prepared_chart_data__pb = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS, days_back)
+    prepared_chart_data__ps = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS, days_back)
+    prepared_chart_data__pfcf = prepare_chart_data(data_list)
+
+
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, days_back)
+    prepared_chart_data__shares = prepare_chart_data(data_list)
+
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE, days_back)
+    prepared_chart_data__revenue = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT, days_back)
+    prepared_chart_data__gross = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA, days_back)
+    prepared_chart_data__ebitda = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME, days_back)
+    prepared_chart_data__net_income = prepare_chart_data(data_list)
+
+
+
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_ASSETS, days_back)
+    prepared_chart_data__assets = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_LIABILITIES, days_back)
+    prepared_chart_data__liabilities = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY, days_back)
+    prepared_chart_data__equity = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.LONG_TERM_DEBT, days_back)
+    prepared_chart_data__long_term_debt = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH, days_back)
+    prepared_chart_data__cash = prepare_chart_data(data_list)
+
+
+
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, days_back)
+    prepared_chart_data__fcf = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION, days_back)
+    prepared_chart_data__fcf_oper = prepare_chart_data(data_list)
+
+
+
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY, days_back)
+    prepared_chart_data__balance_sheet = prepare_chart_data(data_list)
+
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, days_back)
+    prepared_chart_data__free_cash_flow_statement = prepare_chart_data(data_list)
+
+    
+
+    ticker = dao_tickers.select_ticker(ticker_id)
+
+    return render_template(
+        'ticker.html', 
+        ticker = ticker,
+        plot_price = getChart(prepared_chart_data__price[0], [prepared_chart_data__price[1]], [''], 'Price'),
+        plot_target_price = getChart(prepared_chart_data__target_price[0], [prepared_chart_data__target_price[1]], [''], 'Target Price'),
+        
+        plot_option_price_1M = getChart(prepared_chart_data__option_month_price[0], [prepared_chart_data__option_month_price[1]], [''], 'Option price 1M'),
+        plot_option_price_1Y = getChart(prepared_chart_data__option_year_price[0], [prepared_chart_data__option_year_price[1]], [''], 'Option price 1Y'),
+
+        plot_pe = getChart(prepared_chart_data__pe[0], [prepared_chart_data__pe[1]], [''], 'PE'),
+        plot_pb = getChart(prepared_chart_data__pb[0], [prepared_chart_data__pb[1]], [''], 'PB'),
+        plot_ps = getChart(prepared_chart_data__ps[0], [prepared_chart_data__ps[1]], [''], 'PS'),
+        plot_pfcf = getChart(prepared_chart_data__pfcf[0], [prepared_chart_data__pfcf[1]], [''], 'PFCF'),
+
+        plot_income_statement = getChart(
+            prepared_chart_data__revenue[0], 
+            [
+                prepared_chart_data__revenue[1],
+                prepared_chart_data__gross[1],
+                prepared_chart_data__ebitda[1],
+                prepared_chart_data__net_income[1]
+            ], 
+            [
+                'Revenue',
+                'Gross Profit',
+                'EBITDA',
+                'Net Income'
+            ], 
+            'Income statement'
+        ),
+
+        plot_balance_sheet = getChart(
+            prepared_chart_data__assets[0], 
+            [
+                prepared_chart_data__assets[1],
+                prepared_chart_data__liabilities[1],
+                prepared_chart_data__equity[1],
+                prepared_chart_data__long_term_debt[1],
+                prepared_chart_data__cash[1]
+            ], 
+            [
+                'Assets',
+                'Liabilities',
+                'Equity',
+                'Long debt',
+                'Cash'
+            ], 
+            'Balance sheet'
+        ),
+
+        plot_free_cash_flow_statement = getChart(
+            prepared_chart_data__fcf_oper[0], 
+            [
+                prepared_chart_data__fcf_oper[1],
+                prepared_chart_data__fcf[1]
+            ], 
+            [
+                'FCF Operation',
+                'FCF'
+            ], 
+            'FCF Statement'
+        ),     
+        
+        plot_shares = getChart(prepared_chart_data__shares[0], [prepared_chart_data__shares[1]], [''], 'Shares outstanding')
+        
+    )
 
 
 if __name__ == "__main__":
@@ -1201,10 +1430,11 @@ if __name__ == "__main__":
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS]) # every day
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS]) # every day
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS]) # every day
+    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS]) # every day
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS]) # every day
     #downloadStockData()
     
-    #download_valuation_stocks()
+    download_valuation_stocks()
     #download_prices()
     #calc_valuation_stocks()
     #calculate_price_discount()
@@ -1214,10 +1444,11 @@ if __name__ == "__main__":
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS)
+    #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
     #estimate_growth_stocks()
     #polygon_load_fundaments()
 
-    scheduler.start()
+    #scheduler.start()
     logger.info("Schedulers started.")
     app.run(debug=True,host='0.0.0.0')
     
