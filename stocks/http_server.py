@@ -383,7 +383,7 @@ def download_valuation_stocks():
             if len(data_exists) > 0 and (todayDate - data_exists[-1].date).days > (366 + 92)  or len(data_exists) == 0:
                 metrics = fmp.get_metrics(ticker.ticker_id)
                 if len(metrics) == 0:
-                    dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, 0.0, todayDate)
+                    #dao_tickers_data.store_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__ANNUAL, 0.0, todayDate)
                     continue
             else:
                 continue
@@ -1272,7 +1272,7 @@ def ticker_id(ticker_id: str):
     dao_tickers_data = DAO_TickersData(connection)
 
     days_back = 5 * 250
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 3*250)
     prepared_chart_data__price = prepare_chart_data(data_list)
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TARGET_PRICE, days_back)
     prepared_chart_data__target_price = prepare_chart_data(data_list)
@@ -1434,7 +1434,7 @@ if __name__ == "__main__":
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS]) # every day
     #downloadStockData()
     
-    download_valuation_stocks()
+    #download_valuation_stocks()
     #download_prices()
     #calc_valuation_stocks()
     #calculate_price_discount()
