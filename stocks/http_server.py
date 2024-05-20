@@ -17,8 +17,6 @@ from flask import Flask,render_template, render_template_string, request, redire
 
 from stocks.data_providers.fmp import FMP, FMP_Metrics, FMPException_LimitReached
 from stocks.data_providers.alpha_vantage import get_tickers_download, get_earnings_calendar
-from stocks.data_providers.polygon import POLYGON, RESTClient
-from stocks.data_providers.poly_fundamentals import POLY_CONSTANTS, FinancialStatement, CompanyReport, FinancialReport
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from stocks.exporters.ical_exporter import export_earnings
@@ -1403,6 +1401,25 @@ def ticker_id(ticker_id: str):
         
     )
 
+def sync_ticker_id_list():
+    fmp = FMP()
+
+    connection = DB.get_connection_mysql()  
+    dao_tickers = DAO_Tickers(connection)
+    #dao_tickers_data = DAO_TickersData(connection)
+
+    ticker_list = fmp.get_statement_symbols_list()
+    db_ticker_list = dao_tickers.select_tickers_all_ids()
+
+    for ticker_id in ticker_list:
+        if ticker_id.upper() not in db_ticker_list:
+            dao_tickers.insert_ticker(ticker_id.upper(), True)
+            db_ticker_list.append(ticker_id.upper())
+    
+    return
+
+
+
 
 if __name__ == "__main__":
     
@@ -1432,8 +1449,9 @@ if __name__ == "__main__":
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS]) # every day
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__ANNUAL, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS]) # every day
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=11, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS]) # every day
-    #downloadStockData()
     
+    sync_ticker_id_list()
+    #downloadStockData()
     #download_valuation_stocks()
     #download_prices()
     #calc_valuation_stocks()
@@ -1449,8 +1467,11 @@ if __name__ == "__main__":
     #polygon_load_fundaments()
 
     #scheduler.start()
+    
+
+
     logger.info("Schedulers started.")
-    app.run(debug=True,host='0.0.0.0')
+    #app.run(debug=True,host='0.0.0.0')
     
 
 #with socketserver.TCPServer(("", PORT), Handler) as httpd:

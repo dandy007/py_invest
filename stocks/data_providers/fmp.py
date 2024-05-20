@@ -5,6 +5,8 @@ from datetime import datetime
 from .fmp_metrics import FMP_Metrics
 from dotenv import load_dotenv
 
+import fmpsdk
+
 load_dotenv()
 
 class FMPException_LimitReached(Exception):
@@ -17,6 +19,9 @@ class FMP:
 
     def __init__(self):
         pass
+
+    def get_statement_symbols_list(self) -> list[str]:
+        return fmpsdk.financial_statement_symbol_lists(apikey=os.getenv("FMP_API_KEY"))
 
 ####################################################################################################################################################
 

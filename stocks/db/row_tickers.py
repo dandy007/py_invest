@@ -1,6 +1,7 @@
 class ROW_Tickers:
 
     ticker_id = None
+    exchange = None
     name = None
     description = None
     industry = None
@@ -10,6 +11,9 @@ class ROW_Tickers:
     price = None
     target_price = None
     pe = None
+    ps = None
+    pb = None
+    pfcf = None
     recomm_mean = None
     recomm_count = None
     div_yield = None
@@ -24,12 +28,13 @@ class ROW_Tickers:
     price_discount_2 = None
     price_discount_3 = None
     eps_valuation = None
+    fcf_valuation = None
     pe_discount = None
+    ps_discount = None
     pb_discount = None
     pfcf_discount = None
     option_year_discount = None
     beta = None
-    description = None
 
     def __init__(self):
         pass
