@@ -25,27 +25,11 @@ class DAO_Tickers:
             self.conn.commit()
         return
 
-    def update_ticker(self, ticker_row: ROW_Tickers, force_commit: bool):
-        sql = f"update {self.db_name} set ticker_id='{ticker_row.ticker_id}', name='{ticker_row.name[0:99]}', industry='{ticker_row.industry[0:99]}', sector='{ticker_row.sector[0:99]}', isin='{ticker_row.isin[0:99]}' where ticker_id='{ticker_row.ticker_id}'"
-        values = (ticker_row.ticker_id)
-        self.cursor.execute(sql, values)
-        if force_commit:
-            self.conn.commit()
-        return    
-
-    def update_ticker_base_data(self, ticker_row: ROW_Tickers, force_commit: bool):
-        sql = f"update {self.db_name} set name=%s, industry=%s, sector=%s, isin=%s, earnings_date=%s, description=%s where ticker_id = %s"
-        values = (ticker_row.name, ticker_row.industry, ticker_row.sector, ticker_row.isin, ticker_row.earnings_date, ticker_row.description, ticker_row.ticker_id)
-        self.cursor.execute(sql, values)
-        if force_commit:
-            self.conn.commit()
-        return    
-
-    def update_ticker_types(self, ticker_row: ROW_Tickers, types_dict, force_commit: bool):
+    def update_ticker_types(self, ticker_id: str, types_dict, force_commit: bool):
         sql = f"update {self.db_name} set "
         values = []
         for type, value in types_dict.items():
-                if value not in (None, '', 'Infinity') and not math.isnan(value) :
+                if isinstance(value, (int, float, str)):
                     type_column = TICKERS__TYPE_TO_COLUMN__DICT.get(type, None)
                     if type_column != None:
                         if len(values) > 0:
@@ -55,12 +39,12 @@ class DAO_Tickers:
         if len(values) == 0:
             return
         where = f" where ticker_id = %s"
-        values.append(ticker_row.ticker_id)
+        values.append(ticker_id)
         sql = sql + where
         self.cursor.execute(sql, values)
         if force_commit:
             self.conn.commit()
-        return    
+        return None
 
     def update_tickers(self, ticker_data_list):
     
@@ -115,7 +99,35 @@ class DAO_Tickers:
             print("Error selecting data:", err)    
             raise err   
 
+    def select_tickers_all__limited_ids(self) -> list[str] :
+        try:
+            self.cursor.execute(f"select ticker_id from {self.db_name} where market_cap > 100000000 and industry is not NULL and LENGTH(industry) > 0 ORDER BY market_cap DESC")
+            all_db_tickers = self.cursor.fetchall()
+
+            result = []
+            for row in all_db_tickers:
+                result.append(row[0].upper())
+
+            return result
+
+        except mysql.connector.Error as err:
+            print("Error selecting data:", err)    
+            raise err   
     
+    def select_tickers_all__limited_usa_ids(self) -> list[str] :
+        try:
+            self.cursor.execute(f"select ticker_id from {self.db_name} where market_cap > 100000000 and industry is not NULL and LENGTH(industry) > 0 and exchange in ('NYSE', 'NASDAQ') ORDER BY market_cap DESC")
+            all_db_tickers = self.cursor.fetchall()
+
+            result = []
+            for row in all_db_tickers:
+                result.append(row[0].upper())
+
+            return result
+
+        except mysql.connector.Error as err:
+            print("Error selecting data:", err)    
+            raise err   
         
     def select_tickers_where(self, where: str) -> list[ROW_Tickers] :
         try:

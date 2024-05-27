@@ -21,8 +21,56 @@ class FMP:
         pass
 
     def get_statement_symbols_list(self) -> list[str]:
-        return fmpsdk.financial_statement_symbol_lists(apikey=os.getenv("FMP_API_KEY"))
+        return fmpsdk.financial_statement_symbol_lists(os.getenv("FMP_API_KEY"))
+    
+    def get_symbols_list(self, exchange):
+        url = f'https://financialmodelingprep.com/api/v3/symbol/{exchange}?apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
 
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
+    
+    def get_stock_profile(self, ticker_id: str):
+        return fmpsdk.company_profile(os.getenv("FMP_API_KEY"), ticker_id)
+    
+    def get_stock_price_target(self, ticker_id: str) -> float:
+        url = f'https://financialmodelingprep.com/api/v4/price-target-summary?symbol={ticker_id}&apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
+
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
+
+    def get_earnings_calendar(self, from_date: str, to_date: str):
+        return fmpsdk.earning_calendar(os.getenv("FMP_API_KEY"), from_date, to_date)
+    
+    def get_recommendations(self, ticker_id: str):
+        url = f'https://financialmodelingprep.com/api/v3/analyst-stock-recommendations/{ticker_id}?apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
+
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
+    
+    def get_income_statement(self, ticker_id: str, quaterly: bool):
+        return fmpsdk.income_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', 100)
+    
+    def get_balance_sheet_statement(self, ticker_id: str, quaterly: bool):
+        return fmpsdk.balance_sheet_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', 100)
+    
+    def get_cash_flow_statement(self, ticker_id: str, quaterly: bool):
+        return fmpsdk.cash_flow_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', 100)
+    
+    def get_historic_prices(self, ticker_id: str, from_date: str, to_date: str):
+        return fmpsdk.historical_price_full(os.getenv("FMP_API_KEY"), ticker_id, from_date, to_date)
+    
+    def get_key_metrics_ttm(self, ticker_id: str):
+        return fmpsdk.key_metrics_ttm(os.getenv("FMP_API_KEY"), ticker_id, 100)
+    
 ####################################################################################################################################################
 
     def get_metrics(self, ticker_id: str) -> list[FMP_Metrics]:

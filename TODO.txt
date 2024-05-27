@@ -16,6 +16,7 @@ tests
 
 
 Actual
+- target price - FPM / Yahoo
 - insider transakce
 - valuation - DDM
 - seasonality
