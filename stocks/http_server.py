@@ -29,6 +29,7 @@ from bokeh.resources import CDN
 from stocks.frontend import ROW_WebPortfolioPosition
 import plotly.graph_objects as go
 from scipy import stats
+from concurrent.futures import ThreadPoolExecutor
 
 
 app = Flask(__name__, template_folder='frontend/html', static_folder='frontend/html/static')
@@ -185,7 +186,10 @@ def get_price_discount_z_score(dao_tickers_data : DAO_TickersData, ticker_id:str
             zscores = stats.zscore(vwma_price_diffs)
             probabilities = stats.norm.pdf(zscores)  # Use PDF for probability density
 
-            return probabilities[0]
+            if math.isnan(probabilities[0]):
+                return 0.5
+            else:
+                return probabilities[0]
     finally:
         pass
 
@@ -197,8 +201,17 @@ def calculate_price_discount():
 
     tickers = dao_tickers.select_tickers_all__limited_ids()
 
+    #skip = True
+    counter = 0
     for ticker_id in tickers:
         #ticker.ticker_id = 'AAPL'
+        #if ticker_id == 'PFG':
+        #    skip = False
+        #if skip:
+        #    continue
+
+        counter += 1
+
         discount100 = get_price_discount_z_score(dao_tickers_data, ticker_id, 100)
         discount200 = get_price_discount_z_score(dao_tickers_data, ticker_id, 200)
         discount500 = get_price_discount_z_score(dao_tickers_data, ticker_id, 500)
@@ -264,7 +277,7 @@ def calculate_price_discount():
         #    }
         #    dao_tickers.update_ticker_types(ticker, dict_data, True)
 
-        logger.info(f"Discount({ticker_id})")
+        logger.info(f"Discount({ticker_id}) {counter}/{len(tickers)}")
     logger.info(f"calculate_price_discount - End")
 
 def download_prices():
@@ -278,9 +291,11 @@ def download_prices():
     today = datetime.today().strftime("%Y-%m-%d")
     fromDay_0 = "1900-01-01"
 
+    counter = 0
     for ticker_id in tickers:
         #ticker_id='AAPL'
         #ticker: ROW_Tickers
+        counter += 1
 
         last_price_result = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 1)
 
@@ -297,6 +312,8 @@ def download_prices():
         rows_volume = []
 
         date_list = []
+        if prices == None:
+            continue
         for record in prices:
             row = ROW_TickersData()
 
@@ -308,7 +325,8 @@ def download_prices():
             row.ticker_id = ticker_id
             row.type = TICKERS_TIME_DATA__TYPE__CONST.PRICE
             row.value = record['adjClose']
-            rows_price.append(row)
+            if (row.date != None and row.value != None):
+                rows_price.append(row)
 
             if record == prices[0]:            
                 dict_data = {
@@ -322,16 +340,17 @@ def download_prices():
             row.type = TICKERS_TIME_DATA__TYPE__CONST.VOLUME
             row.value = record['volume']
 
-            rows_volume.append(row)
-            date_list.append(row.date)
+            if (row.date != None and row.value != None):
+                rows_volume.append(row)
+                date_list.append(row.date)
 
         dao_tickers_data.bulk_insert_ticker_data(rows_price, True)
         dao_tickers_data.bulk_insert_ticker_data(rows_volume, True)
-        #logger.info(f"download_prices: Updated {ticker_id}")
+        logger.info(f"download_prices: Updated {ticker_id} {counter}/{len(tickers)} count={len(rows_price)}")
     logger.info(f"download_prices - End")
 
 
-def calc_valuation_stocks():
+def calc_valuation_stocks111():
     logger.info("Calc Valuation Data Job started.")
     connection = DB.get_connection_mysql()
     dao_tickers = DAO_Tickers(connection)
@@ -376,9 +395,9 @@ def calc_valuation_stocks():
         logger.info(f"Calc Valuation: Valuation({ticker.ticker_id})")
     logger.info("Calc Valuation Data Job finished.")
 
-def download_valuation_stocks():
+def calc_valuation_ratios_stocks():
 
-    logger.info(f"download_valuation_stocks - Start")
+    logger.info(f"calc_valuation_ratios_stocks - Start")
     connection = DB.get_connection_mysql()
     dao_tickers = DAO_Tickers(connection)
     dao_tickers_data = DAO_TickersData(connection)
@@ -391,8 +410,10 @@ def download_valuation_stocks():
     metrics : list[FMP_Metrics] = None
     metric : FMP_Metrics = None
     todayDate = date.today()
+    counter = 0
     for ticker_id in tickers:
-        #ticker_id = 'AAPL'
+        counter += 1
+        #ticker_id = 'NVD.F'
 
         if ticker_id not in statement_list:
             continue
@@ -431,6 +452,7 @@ def download_valuation_stocks():
             eps_list_q = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS_Q, -1)
             eps_list_q.sort(key=lambda x: x.date, reverse=False)
             pe_list_q = []
+            last_record = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, 1)
 
             if len(eps_list_q) > 3:
                 for eps_index in range(3, len(eps_list_q)):
@@ -451,13 +473,15 @@ def download_valuation_stocks():
                                 pe.value = price.value / eps_value
                             else:
                                 pe.value = 0
-                            pe_list_q.append(pe)
+                            if len(last_record) == 0 or last_record[-1].date < pe.date:
+                                pe_list_q.append(pe)
                             break
 
             # PS
             revenue_list_q = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, -1)
             revenue_list_q.sort(key=lambda x: x.date, reverse=False)
             ps_list_q = []
+            last_record = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, 1)
 
             if len(revenue_list_q) > 3:
                 for rev_index in range(3, len(revenue_list_q)):
@@ -480,11 +504,12 @@ def download_valuation_stocks():
                             ps.type = TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q
                             ps.date = revenue_list_q[rev_index].date
                             ps.ticker_id = ticker_id
-                            if rev_value != 0:
+                            if rev_value != 0 and shares != 0:
                                 ps.value = price.value / (rev_value / shares)
                             else:
                                 ps.value = 0
-                            ps_list_q.append(ps)
+                            if len(last_record) == 0 or last_record[-1].date < ps.date:
+                                ps_list_q.append(ps)
                             break
 
             # PB
@@ -492,6 +517,7 @@ def download_valuation_stocks():
             book_list_q.sort(key=lambda x: x.date, reverse=False)
 
             pb_list_q = []
+            last_record = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, 1)
 
             if len(book_list_q) > 0:
                 for pb_index in range(0, len(book_list_q)):
@@ -514,11 +540,12 @@ def download_valuation_stocks():
                             pb.type = TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q
                             pb.date = book_list_q[pb_index].date
                             pb.ticker_id = ticker_id
-                            if book_value != 0:
+                            if book_value != 0 and shares != 0:
                                 pb.value = price.value / (book_value / shares)
                             else:
                                 pb.value = 0
-                            pb_list_q.append(pb)
+                            if len(last_record) == 0 or last_record[-1].date < pb.date:
+                                pb_list_q.append(pb)
                             break
 
             #PFCF
@@ -526,6 +553,7 @@ def download_valuation_stocks():
             fcf_list_q.sort(key=lambda x: x.date, reverse=False)
 
             pfcf_list_q = []
+            last_record = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, 1)
 
             if len(fcf_list_q) > 3:
                 for fcf_index in range(3, len(fcf_list_q)):
@@ -548,11 +576,12 @@ def download_valuation_stocks():
                             pfcf.type = TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q
                             pfcf.date = fcf_list_q[fcf_index].date
                             pfcf.ticker_id = ticker_id
-                            if fcf_value != 0:
+                            if fcf_value != 0  and shares != 0:
                                 pfcf.value = price.value / (fcf_value / shares)
                             else:
                                 pfcf.value = 0
-                            pfcf_list_q.append(pfcf)
+                            if len(last_record) == 0 or last_record[-1].date < pfcf.date:
+                                pfcf_list_q.append(pfcf)
                             break
             
             dao_tickers_data.bulk_insert_ticker_data(pe_list_q, True)
@@ -565,8 +594,8 @@ def download_valuation_stocks():
             logger.warning("Limit reached, job stopped.")
             return
         
-        logger.info(f"Download Valuation Ticker({ticker_id})")
-    logger.info(f"download_valuation_stocks - End")
+        logger.info(f"calc_valuation_ratios_stocks ({ticker_id} - {counter}/{len(tickers)})")
+    logger.info(f"calc_valuation_ratios_stocks - End")
 
 
 def predict_growth_rate(x : list[float], y : list[float]) -> list[float]:
@@ -613,8 +642,13 @@ def estimate_growth_stocks():
 
     tickers = dao_tickers.select_tickers_all__limited_ids()
 
+    counter = 0
     for ticker_id in tickers:
-        #ticker.ticker_id = 'AAPL'
+
+        counter += 1
+        logger.info(f"estimate_growth_stocks {counter}/{len(tickers)}")
+
+        #ticker_id = 'AAPL'
         years_back = 5
         y_net_income_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME, years_back)
         y_revenue_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE, years_back)
@@ -632,21 +666,22 @@ def estimate_growth_stocks():
         q_fcf_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, quarters_back)
         q_gross_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT_Q, quarters_back)
 
-        #q_shares_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.SHARES_OUTSTANDING_Q, 3 * 52 * 5) #2 years * 52 weeks * 5 days
+        q_shares_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.SHARES_OUTSTANDING_Q, quarters_back + 4) #2 years * 52 weeks * 5 days
         growth_shares = None
 
         shares_growth_per_year = None
 
-        prepared_list = prepare_growth_data(y_shares_list)
+        prepared_list = prepare_growth_data(q_shares_list)
         if prepared_list != None: 
-            shares_growth_per_year = predict_growth_rate(prepared_list[0], prepared_list[1])[0]
+            shares_growth_per_year = predict_growth_rate(prepared_list[0], prepared_list[1])[0] * 4
 
         #if len(y_shares_list) > 250 and isinstance(y_shares_list[0].value, (int, float)) and isinstance(y_shares_list[-1].value, (int, float) ) and y_shares_list[-1].value != 0:
         #    percent_change = (y_shares_list[0].value - y_shares_list[-1].value)/y_shares_list[-1].value
         #    shares_growth_per_year = percent_change * (52 * 5) / len(y_shares_list) # 52 weeks * 5 days
         
         if shares_growth_per_year != None:
-            print(f"Shares({ticker_id}): {shares_growth_per_year}")
+            #print(f"Shares({ticker_id}): {shares_growth_per_year}")
+            pass
         
         growth_list = []
         r_square_list = []
@@ -656,42 +691,42 @@ def estimate_growth_stocks():
             growth_net_income = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(growth_net_income[0])
             r_square_list.append(growth_net_income[1])
-            print(f"Net income({ticker_id}): {growth_net_income}")
+            #print(f"Net income({ticker_id}): {growth_net_income}")
 
         prepared_list = prepare_growth_data(y_revenue_list)
         if prepared_list != None: 
             growth_revenue = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(growth_revenue[0])
             r_square_list.append(growth_revenue[1])
-            print(f"Revenue({ticker_id}): {growth_revenue}")
+            #print(f"Revenue({ticker_id}): {growth_revenue}")
 
         prepared_list = prepare_growth_data(y_flow_cont_list)
         if prepared_list != None: 
             cont_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(cont_growth[0])
             r_square_list.append(cont_growth[1])
-            print(f"Cont_FLOW({ticker_id}): {cont_growth}")
+            #print(f"Cont_FLOW({ticker_id}): {cont_growth}")
 
         prepared_list = prepare_growth_data(y_ebitda_list)
         if prepared_list != None: 
             ebitda_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(ebitda_growth[0])
             r_square_list.append(ebitda_growth[1])
-            print(f"EBITDA({ticker_id}): {ebitda_growth}")
+            #print(f"EBITDA({ticker_id}): {ebitda_growth}")
 
         prepared_list = prepare_growth_data(y_fcf_list)
         if prepared_list != None: 
             fcf_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(fcf_growth[0])
             r_square_list.append(fcf_growth[1])
-            print(f"FCF({ticker_id}): {fcf_growth}")
+            #print(f"FCF({ticker_id}): {fcf_growth}")
 
         prepared_list = prepare_growth_data(y_gross_list)
         if prepared_list != None: 
             gross_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(gross_growth[0])
             r_square_list.append(gross_growth[1])
-            print(f"Gross({ticker_id}): {gross_growth}")
+            #print(f"Gross({ticker_id}): {gross_growth}")
 
         data = {
             'Growth Rate': growth_list,  # Rustove koeficienty
@@ -708,7 +743,7 @@ def estimate_growth_stocks():
             weighted_average_growth_a = ((1 + weighted_average_growth_a) / (1 + shares_growth_per_year) ) - 1
         #print(f"Final growth Annual({ticker.ticker_id}): {weighted_average_growth_a}")
         stability_a = df['R-squared'].sum()
-        print(f"Stability Annual({ticker_id}): {stability_a}")
+        #print(f"Stability Annual({ticker_id}): {stability_a}")
 
         growth_list = []
         r_square_list = []
@@ -718,42 +753,42 @@ def estimate_growth_stocks():
             growth_net_income = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(growth_net_income[0])
             r_square_list.append(growth_net_income[1] ** 2)
-            print(f"Net income({ticker_id}): {growth_net_income}")
+            #print(f"Net income({ticker_id}): {growth_net_income}")
 
         prepared_list = prepare_growth_data(q_revenue_list)
         if prepared_list != None: 
             growth_revenue = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(growth_revenue[0])
             r_square_list.append(growth_revenue[1] ** 2)
-            print(f"Revenue({ticker_id}): {growth_revenue}")
+            #print(f"Revenue({ticker_id}): {growth_revenue}")
 
         prepared_list = prepare_growth_data(q_flow_cont_list)
         if prepared_list != None: 
             cont_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(cont_growth[0])
             r_square_list.append(cont_growth[1] ** 2)
-            print(f"Cont_FLOW({ticker_id}): {cont_growth}")
+            #print(f"Cont_FLOW({ticker_id}): {cont_growth}")
 
         prepared_list = prepare_growth_data(q_ebitda_list)
         if prepared_list != None: 
             ebitda_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(ebitda_growth[0])
             r_square_list.append(ebitda_growth[1] ** 2)
-            print(f"EBITDA({ticker_id}): {ebitda_growth}")
+            #print(f"EBITDA({ticker_id}): {ebitda_growth}")
 
         prepared_list = prepare_growth_data(q_fcf_list)
         if prepared_list != None: 
             fcf_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(fcf_growth[0])
             r_square_list.append(fcf_growth[1] ** 2)
-            print(f"FCF({ticker_id}): {fcf_growth}")
+            #print(f"FCF({ticker_id}): {fcf_growth}")
 
         prepared_list = prepare_growth_data(q_gross_list)
         if prepared_list != None: 
             gross_growth = predict_growth_rate(prepared_list[0], prepared_list[1])
             growth_list.append(gross_growth[0])
             r_square_list.append(gross_growth[1] ** 2)
-            print(f"Gross({ticker_id}): {gross_growth}")
+            #print(f"Gross({ticker_id}): {gross_growth}")
 
         if len(growth_list) != 6:
             continue
@@ -786,7 +821,7 @@ def estimate_growth_stocks():
         }
 
         dao_tickers.update_ticker_types(ticker_id, dict_data, True)
-        #print(f"Updated GROWTH on {ticker_id}")
+        logger.info(f"Updated GROWTH on {ticker_id}")
     logger.info(f"estimate_growth_stocks - End")
 
 
@@ -826,8 +861,12 @@ def downloadStockOptionData():
     
     #skip = True
     ticker_list = dao_tickers.select_tickers_all__limited_usa_ids()
+    counter = 0
     for ticker_id in ticker_list:
         #ticker:ROW_Tickers
+
+        counter += 1
+        logger.info(f"downloadStockOptionData {counter}/{len(ticker_list)}")
 
         pd.set_option('display.max_rows', None)
         stock = yf.Ticker(ticker_id)
@@ -990,7 +1029,10 @@ def calculate_continuous_metrics(earning_metric_const: int, metric_continuous_co
     ticker_list_orig = dao_tickers.select_tickers_all__limited_ids()
     statement_list = fmp.get_statement_symbols_list()
 
+    counter = 0
     for ticker_id in ticker_list_orig:
+        counter += 1
+        logger.info(f"calculate_continuous_metrics({earning_metric_const}) {counter}/{len(ticker_list_orig)}")
         #ticker_id = 'AAPL'
         #ticker : ROW_Tickers
         if ticker_id not in statement_list:
@@ -1296,10 +1338,11 @@ def ticker_id(ticker_id: str):
     dao_tickers = DAO_Tickers(connection)
     dao_tickers_data = DAO_TickersData(connection)
 
-    days_back = 5 * 250
+    annual = 5
+    days_back = annual * 250
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 3*250)
     prepared_chart_data__price = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TARGET_PRICE, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__TARGET_PRICE, days_back)
     prepared_chart_data__target_price = prepare_chart_data(data_list)
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPTION_MONTH_AVG_PRICE, days_back)
     prepared_chart_data__option_month_price = prepare_chart_data(data_list)
@@ -1317,44 +1360,44 @@ def ticker_id(ticker_id: str):
     prepared_chart_data__pfcf = prepare_chart_data(data_list)
 
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.SHARES_OUTSTANDING_Q, annual * 4)
     prepared_chart_data__shares = prepare_chart_data(data_list)
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE, annual)
     prepared_chart_data__revenue = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT, annual)
     prepared_chart_data__gross = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA, annual)
     prepared_chart_data__ebitda = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME, annual)
     prepared_chart_data__net_income = prepare_chart_data(data_list)
 
 
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_ASSETS, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_ASSETS, annual)
     prepared_chart_data__assets = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_LIABILITIES, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_LIABILITIES, annual)
     prepared_chart_data__liabilities = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY, annual)
     prepared_chart_data__equity = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.LONG_TERM_DEBT, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.LONG_TERM_DEBT, annual)
     prepared_chart_data__long_term_debt = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH, annual)
     prepared_chart_data__cash = prepare_chart_data(data_list)
 
 
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, annual)
     prepared_chart_data__fcf = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION, annual)
     prepared_chart_data__fcf_oper = prepare_chart_data(data_list)
 
 
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY, annual)
     prepared_chart_data__balance_sheet = prepare_chart_data(data_list)
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, days_back)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, annual)
     prepared_chart_data__free_cash_flow_statement = prepare_chart_data(data_list)
 
     
@@ -1430,7 +1473,8 @@ def ticker_id(ticker_id: str):
 
 def sync_ticker_id_list():
     logger.info(f"sync_ticker_id_list - Start")
-    exchange_list = ['NASDAQ', 'NYSE', 'XETRA', 'EURONEXT', 'LSE']
+    exchange_list = ['NASDAQ', 'NYSE']
+    #exchange_list = ['NASDAQ', 'NYSE', 'XETRA', 'EURONEXT', 'LSE']
     
     fmp = FMP()
 
@@ -1466,11 +1510,17 @@ def update_ticker_profile(refresh: bool):
     db_ticker_list = dao_tickers.select_tickers_all_ids()
     #db_ticker_list = ['AAPL', 'GOOG', 'MPW']
 
+    counter = 0
     for ticker_id in db_ticker_list:
+        counter += 1
         ticker = dao_tickers.select_ticker(ticker_id)
         if ticker == None or ticker.market_cap == None or refresh:
             profile = fmp.get_stock_profile(ticker_id)
             if len(profile) == 1:
+
+                if profile[0]['isFund'] == True or profile[0]['isActivelyTrading'] == False or profile[0]['isEtf'] == True:
+                    dao_tickers.delete_tickers(ticker_id)
+                    continue
 
                 dict_data = {
                     TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__BETA: profile[0]['beta'],
@@ -1485,6 +1535,7 @@ def update_ticker_profile(refresh: bool):
                 }
 
                 dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+                logger.info(f"update_ticker_profile - {counter}/{len(db_ticker_list)}")
             else:
                 logger.error(f"Multiple or no profile for ticker {ticker_id}")
     logger.info(f"update_ticker_profile - End")
@@ -1501,7 +1552,9 @@ def update_ticker_target_price():
     db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
     #db_ticker_list = ['AAON' ,'AAPL', 'GOOG', 'MPW']
 
+    counter = 0
     for ticker_id in db_ticker_list:
+        counter += 1
         target = fmp.get_stock_price_target(ticker_id)
         if target != None and len(target) == 1:
 
@@ -1519,6 +1572,7 @@ def update_ticker_target_price():
 
                 dao_tickers.update_ticker_types(ticker_id, dict_data, True)
                 dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__TARGET_PRICE, target_price, today)
+                logger.info(f"update_ticker_target_price {counter}/{len(db_ticker_list)}")
 
         else:
            logger.error(f"Multiple or no target price for ticker {ticker_id}")
@@ -1554,12 +1608,17 @@ def update_stock_recommendations():
     dao_tickers = DAO_Tickers(connection)
     dao_tickers_data = DAO_TickersData(connection)
 
-    today = datetime.today().strftime("%Y-%m-%d")
+    #today = datetime.today().strftime("%Y-%m-%d")
+    today = datetime.today().date()
 
     db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
     #db_ticker_list = ['AAON' ,'AAPL', 'GOOG', 'MPW']
 
+
+    counter = 0
     for ticker_id in db_ticker_list:
+        counter += 1
+        logger.info(f"update_stock_recommendations - {counter}/{len(db_ticker_list)}")
         recommendations = fmp.get_recommendations(ticker_id)
         if recommendations != None and len(recommendations) > 0:
 
@@ -1580,7 +1639,7 @@ def update_stock_recommendations():
                 }
 
                 dao_tickers.update_ticker_types(ticker_id, dict_data, True)
-                dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__RECOMM_MEAN, recomm / recomm_count, today)  
+                dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__RECOMM_MEAN, recomm / recomm_count, today)
         else:
            logger.error(f"Multiple or no target price for ticker {ticker_id}")
     logger.info(f"update_stock_recommendations - End")
@@ -1628,6 +1687,7 @@ def download_fundamental_statements():
     counter = 0
     for ticker_id in db_ticker_list:
         counter += 1
+        logger.info(f"download_fundamental_statements({ticker_id}) - {counter}/{len(db_ticker_list)}")
         if ticker_id not in statement_list:
             continue
         
@@ -1655,7 +1715,6 @@ def download_fundamental_statements():
         income_statement_a_list = fmp.get_income_statement(ticker_id, False)
         balance_sheet_statement_a_list = fmp.get_balance_sheet_statement(ticker_id, False)
         cash_flow_statement_a_list = fmp.get_cash_flow_statement(ticker_id, False)
-        
         
 
         for income_statement in income_statement_a_list:
@@ -1717,6 +1776,98 @@ def download_fundamental_statements():
             dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION_Q, cash_flow['operatingCashFlow'], date_d)
     logger.info(f"download_fundamental_statements - End")
 
+def calc_valuation_stocks():
+
+    logger.info(f"calc_valuation_stocks - Start")
+
+    connection = DB.get_connection_mysql()  
+    dao_tickers = DAO_Tickers(connection)
+    dao_tickers_data = DAO_TickersData(connection)
+
+    db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
+    today = datetime.today().date()
+
+    wanted_return = 0.1 # 10 %
+    margin_of_safety = 0.2 # 20 %
+    perp_growth = 0.03 # 3%
+
+    safe_target_price_eps = 0
+    safe_target_price_fcf = 0
+
+    counter = 0
+    for ticker_id in db_ticker_list:
+        counter += 1
+        logger.info(f"calc_valuation_stocks - {ticker_id} {counter}/{len(db_ticker_list)}")
+
+        ticker = dao_tickers.select_ticker(ticker_id)
+        growth = ticker.growth_rate
+        cash = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_Q, 1)
+        shares = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.SHARES_OUTSTANDING_Q, 1)
+        total_debt = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_DEBT_Q, 1)
+
+        if len(shares) == 0 or len(cash) == 0 or len(total_debt) == 0 or growth == None or shares[0].value == 0:
+            continue
+
+        # EPS valuation
+        eps_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS_Q, 4)
+        if len(eps_list) == 4:
+            eps_value = eps_list[0].value + eps_list[1].value + eps_list[2].value + eps_list[3].value
+            pe_result = dao_tickers_data.select_ticker_data_mean_stdev(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS, 5 * 250)
+            if pe_result != None:
+                pe_ratio_mean = pe_result[0]
+                if pe_ratio_mean == None:
+                    continue
+                cash_per_share = 0
+
+                if len(cash) > 0 and len(shares) > 0 and shares[0].value > 0:
+                    cash_per_share = cash[0].value / shares[0].value 
+
+
+                    future_eps = eps_value * (1 + growth) ** 3
+                    future_price = future_eps * pe_ratio_mean
+                    target_price = future_price/((1+wanted_return) ** 3)
+
+                    safe_target_price_eps = target_price * (1 - margin_of_safety)
+
+        # DFCF valuation
+        fcf_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, 4)
+        if len(fcf_list) == 4:
+            fcf_value = fcf_list[0].value + fcf_list[1].value + fcf_list[2].value + fcf_list[3].value
+
+            future_fcf = fcf_value * (1 + growth) ** 9
+            terminal_value = (future_fcf * (1 + perp_growth))/(wanted_return - perp_growth)
+            terminal_value_price = terminal_value / ((1+wanted_return)**8)
+
+            present_value_fcf = 0
+            for year in range(1, 9 + 1):
+                future_fcf = fcf_value * (1 + growth) ** year
+                present_value_fcf += future_fcf / (1 + wanted_return) ** year
+
+            total_present_value = present_value_fcf + terminal_value_price
+
+            safe_target_price_fcf = (1 - margin_of_safety) * ((total_present_value + cash[0].value - total_debt[0].value) / shares[0].value)
+
+        dict_data = {
+            TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__EPS_VALUATION: safe_target_price_eps,
+            TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__FCF_VALUATION: safe_target_price_fcf
+        }
+
+        dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+        #dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__EPS_VALUATION, safe_target_price_eps, today)
+        #dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__FCF_VALUATION, safe_target_price_fcf, today)
+
+    logger.info(f"calc_valuation_stocks - End")
+
+
+
+def run_all_jobs_parallel():
+    with ThreadPoolExecutor(max_workers=len(scheduler.get_jobs())) as executor:
+        futures = [executor.submit(job.func, *job.args, **job.kwargs) for job in scheduler.get_jobs()]
+        for future in futures:
+            try:
+                future.result()  # Wait for each job to complete
+            except Exception as e:
+                print(f"Job raised an exception: {e}")
 
 
 if __name__ == "__main__":
@@ -1739,8 +1890,8 @@ if __name__ == "__main__":
 
 
 
-    scheduler.add_job(sync_ticker_id_list, 'cron', day_of_week='sun', hour=3, minute=30)
-    scheduler.add_job(update_ticker_profile, 'cron', day_of_week='sun', hour=3, minute=30, args=[False])
+    #scheduler.add_job(sync_ticker_id_list, 'cron', day_of_week='sun', hour=3, minute=30)
+    #scheduler.add_job(update_ticker_profile, 'cron', day_of_week='sun', hour=3, minute=30, args=[False])
     scheduler.add_job(update_earnings_calendar, 'cron',day_of_week='sun', hour=3, minute=30)
     
 
@@ -1748,33 +1899,42 @@ if __name__ == "__main__":
     scheduler.add_job(update_ticker_target_price, 'cron',day_of_week='tue-sat', hour=0, minute=30)
     scheduler.add_job(update_stock_recommendations, 'cron',day_of_week='tue-sat', hour=0, minute=30)
     scheduler.add_job(downloadStockOptionData, 'cron',day_of_week='tue-sat', hour=0, minute=30)
-    scheduler.add_job(download_valuation_stocks, 'cron',day_of_week='tue-sat', hour=0, minute=30)
     scheduler.add_job(download_fundamental_statements, 'cron',day_of_week='tue-sat', hour=0, minute=30)
+    
 
-    scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
-    scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=12, minute=30)
-    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS])
-    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
-    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS])
-    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
+    #scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+    #scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+    #scheduler.add_job(calc_valuation_ratios_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+
+    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS])
+    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
+    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS])
+    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
     
     #sync_ticker_id_list()
-    #update_ticker_profile(False)
+    #update_ticker_profile(True)
     #update_earnings_calendar()
     
     #download_prices()
     #update_ticker_target_price()
     #update_stock_recommendations()
     #downloadStockOptionData()
-    #download_valuation_stocks()
     #download_fundamental_statements()
     
-    #calculate_price_discount()
+    #calc_valuation_ratios_stocks()
+    calculate_price_discount()
     #estimate_growth_stocks()
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
+    #calc_valuation_stocks()
+
+    #update_ticker_target_price()
+    #update_stock_recommendations()
+    #downloadStockOptionData()
+
+
 
 
 
@@ -1783,16 +1943,20 @@ if __name__ == "__main__":
     #update_dividends_info() - asi neni treba
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS)
     #rank_stocks()
-    #calc_valuation_stocks()
+    #calc_valuation_ratios_stocks()
     #valuate_stocks()
 
     #scheduler.start()
-    
+    #run_all_jobs_parallel()
 
 
     logger.info("Schedulers started.")
-    #app.run(debug=True,host='0.0.0.0')
+    app.run(debug=True,host='0.0.0.0')
     
+
+
+
+
 
 #with socketserver.TCPServer(("", PORT), Handler) as httpd:
 #    print(f"Serving at port {PORT}")

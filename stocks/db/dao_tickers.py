@@ -67,6 +67,16 @@ class DAO_Tickers:
             print("Record inserted successfully!")
         except mysql.connector.Error as err:
             print("Error inserting data:", err)
+
+    def delete_tickers(self, ticker_id: str):
+    
+        try:
+            self.cursor.execute(f"delete from {self.db_name} where ticker_id = '{ticker_id}'")
+            self.conn.commit()
+            
+            print("Record deleted successfully!")
+        except mysql.connector.Error as err:
+            print("Error delete data:", err)
     
     def select_tickers_all(self) -> list[ROW_Tickers] :
         try:
@@ -100,6 +110,7 @@ class DAO_Tickers:
             raise err   
 
     def select_tickers_all__limited_ids(self) -> list[str] :
+        return self.select_tickers_all__limited_usa_ids()
         try:
             self.cursor.execute(f"select ticker_id from {self.db_name} where market_cap > 100000000 and industry is not NULL and LENGTH(industry) > 0 ORDER BY market_cap DESC")
             all_db_tickers = self.cursor.fetchall()
@@ -116,7 +127,7 @@ class DAO_Tickers:
     
     def select_tickers_all__limited_usa_ids(self) -> list[str] :
         try:
-            self.cursor.execute(f"select ticker_id from {self.db_name} where market_cap > 100000000 and industry is not NULL and LENGTH(industry) > 0 and exchange in ('NYSE', 'NASDAQ') ORDER BY market_cap DESC")
+            self.cursor.execute(f"select ticker_id from {self.db_name} where market_cap > 1000000000 and industry is not NULL and LENGTH(industry) > 0 and exchange in ('NYSE', 'NASDAQ') ORDER BY market_cap DESC")
             all_db_tickers = self.cursor.fetchall()
 
             result = []
@@ -186,19 +197,17 @@ class DAO_Tickers:
         ticker.earnings_date = row[19]
         ticker.growth_rate_stability = row[20]
         ticker.growth_rate_comb = row[21]
-        ticker.pe_valuation = row[22]
-        ticker.comb_valuation = row[23]
-        ticker.price_discount_1 = row[24]
-        ticker.price_discount_2 = row[25]
-        ticker.price_discount_3 = row[26]
-        ticker.eps_valuation = row[27]
-        ticker.fcf_valuation = row[28]
-        ticker.pe_discount = row[29]
-        ticker.ps_discount = row[30]
-        ticker.pb_discount = row[31]
-        ticker.pfcf_discount = row[32]
-        ticker.option_year_discount = row[33]
-        ticker.beta = row[34]
+        ticker.price_discount_1 = row[22]
+        ticker.price_discount_2 = row[23]
+        ticker.price_discount_3 = row[24]
+        ticker.eps_valuation = row[25]
+        ticker.fcf_valuation = row[26]
+        ticker.pe_discount = row[27]
+        ticker.ps_discount = row[28]
+        ticker.pb_discount = row[29]
+        ticker.pfcf_discount = row[30]
+        ticker.option_year_discount = row[31]
+        ticker.beta = row[32]
         return ticker
 
 
