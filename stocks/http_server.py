@@ -1902,14 +1902,15 @@ if __name__ == "__main__":
     scheduler.add_job(download_fundamental_statements, 'cron',day_of_week='tue-sat', hour=0, minute=30)
     
 
-    #scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
-    #scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=12, minute=30)
-    #scheduler.add_job(calc_valuation_ratios_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+    scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+    scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+    scheduler.add_job(calc_valuation_ratios_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+    scheduler.add_job(calc_valuation_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
 
-    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS])
-    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
-    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS])
-    #scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
+    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS])
+    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
+    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS])
+    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
     
     #sync_ticker_id_list()
     #update_ticker_profile(True)
@@ -1922,7 +1923,7 @@ if __name__ == "__main__":
     #download_fundamental_statements()
     
     #calc_valuation_ratios_stocks()
-    calculate_price_discount()
+    #calculate_price_discount()
     #estimate_growth_stocks()
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
@@ -1946,7 +1947,7 @@ if __name__ == "__main__":
     #calc_valuation_ratios_stocks()
     #valuate_stocks()
 
-    #scheduler.start()
+    scheduler.start()
     #run_all_jobs_parallel()
 
 
