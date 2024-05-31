@@ -8,3 +8,4 @@ flask
 bokeh
 polygon-api-client
 plotly
+fmpsdk

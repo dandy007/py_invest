@@ -1951,7 +1951,7 @@ if __name__ == "__main__":
     #run_all_jobs_parallel()
 
 
-    logger.info("Schedulers started.")
+    logger.info("Schedulers started v2.")
     app.run(debug=True,host='0.0.0.0')
     
 
