@@ -298,6 +298,7 @@ def download_prices():
         counter += 1
 
         last_price_result = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 1)
+        last_volume_result = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.VOLUME, 1)
 
         if len(last_price_result) == 0:
             fromDay = fromDay_0
@@ -325,7 +326,7 @@ def download_prices():
             row.ticker_id = ticker_id
             row.type = TICKERS_TIME_DATA__TYPE__CONST.PRICE
             row.value = record['adjClose']
-            if (row.date != None and row.value != None):
+            if (row.date != None and row.value != None and (len(last_price_result) == 0 or row.date > last_price_result[-1].date)):
                 rows_price.append(row)
 
             if record == prices[0]:            
@@ -340,7 +341,7 @@ def download_prices():
             row.type = TICKERS_TIME_DATA__TYPE__CONST.VOLUME
             row.value = record['volume']
 
-            if (row.date != None and row.value != None):
+            if (row.date != None and row.value != None and (len(last_volume_result) == 0 and row.date > last_volume_result[-1].date)):
                 rows_volume.append(row)
                 date_list.append(row.date)
 
@@ -600,6 +601,13 @@ def calc_valuation_ratios_stocks():
 
 def predict_growth_rate(x : list[float], y : list[float]) -> list[float]:
 
+    if x == None:
+        x = []
+        counter = 0
+        for y_item in y:
+            x.append(counter)
+            counter += 1
+    
     x_array = np.array(x).reshape(-1, 1)
     y_array = np.array(y)
 
@@ -1312,6 +1320,22 @@ def prepare_chart_data(ticker_data_list: list[ROW_TickersData]):
 
     return [list_x, list_y]
 
+def prepare_chart_data_TTM(ticker_data_list: list[ROW_TickersData]):
+    list_x = []
+    list_y = []
+
+    ticker_data_list.sort(key=lambda x: (x.date), reverse=True)
+
+    counter = -1
+    for ticker_data in ticker_data_list:
+        counter += 1
+        if counter + 3 > len(ticker_data_list) - 1:
+            continue
+        list_x.append(ticker_data.date)
+        list_y.append(ticker_data_list[counter].value + ticker_data_list[counter+1].value + ticker_data_list[counter+2].value + ticker_data_list[counter+3].value)
+
+    return [list_x, list_y]
+
 def getChart(x_data, y_data_lists, line_title_list, chart_title):
     fig = go.Figure()
 
@@ -1363,34 +1387,34 @@ def ticker_id(ticker_id: str):
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.SHARES_OUTSTANDING_Q, annual * 4)
     prepared_chart_data__shares = prepare_chart_data(data_list)
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE, annual)
-    prepared_chart_data__revenue = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT, annual)
-    prepared_chart_data__gross = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA, annual)
-    prepared_chart_data__ebitda = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME, annual)
-    prepared_chart_data__net_income = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, (1 + annual) * 4)
+    prepared_chart_data__revenue = prepare_chart_data_TTM(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT_Q, (1 + annual) * 4)
+    prepared_chart_data__gross = prepare_chart_data_TTM(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA_Q, (1 + annual) * 4)
+    prepared_chart_data__ebitda = prepare_chart_data_TTM(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_Q, (1 + annual) * 4)
+    prepared_chart_data__net_income = prepare_chart_data_TTM(data_list)
 
 
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_ASSETS, annual)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_ASSETS_Q, annual * 4)
     prepared_chart_data__assets = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_LIABILITIES, annual)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_LIABILITIES_Q, annual * 4)
     prepared_chart_data__liabilities = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY, annual)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY_Q, annual * 4)
     prepared_chart_data__equity = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.LONG_TERM_DEBT, annual)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.LONG_TERM_DEBT_Q, annual * 4)
     prepared_chart_data__long_term_debt = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH, annual)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_Q, annual * 4)
     prepared_chart_data__cash = prepare_chart_data(data_list)
 
 
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, annual)
-    prepared_chart_data__fcf = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION, annual)
-    prepared_chart_data__fcf_oper = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, (1 + annual) * 4)
+    prepared_chart_data__fcf = prepare_chart_data_TTM(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION_Q, (1 + annual) * 4)
+    prepared_chart_data__fcf_oper = prepare_chart_data_TTM(data_list)
 
 
 
@@ -1400,6 +1424,12 @@ def ticker_id(ticker_id: str):
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, annual)
     prepared_chart_data__free_cash_flow_statement = prepare_chart_data(data_list)
 
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT_MARGIN_Q, annual * 4)
+    prepared_chart_data__gross_margin = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPERATING_INCOME_MARGIN_Q, annual * 4)
+    prepared_chart_data__operation_margin = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_MARGIN_Q, annual * 4)
+    prepared_chart_data__net_margin = prepare_chart_data(data_list)
     
 
     ticker = dao_tickers.select_ticker(ticker_id)
@@ -1408,15 +1438,32 @@ def ticker_id(ticker_id: str):
         'ticker.html', 
         ticker = ticker,
         plot_price = getChart(prepared_chart_data__price[0], [prepared_chart_data__price[1]], [''], 'Price'),
-        plot_target_price = getChart(prepared_chart_data__target_price[0], [prepared_chart_data__target_price[1]], [''], 'Target Price'),
+        plot_target_price = getChart(prepared_chart_data__target_price[0], [prepared_chart_data__target_price[1]], [''], f'Analysts Target Price ({get_safe_value(prepared_chart_data__target_price)})'),
         
-        plot_option_price_1M = getChart(prepared_chart_data__option_month_price[0], [prepared_chart_data__option_month_price[1]], [''], 'Option price 1M'),
-        plot_option_price_1Y = getChart(prepared_chart_data__option_year_price[0], [prepared_chart_data__option_year_price[1]], [''], 'Option price 1Y'),
+        #plot_option_price_1M = getChart(prepared_chart_data__option_month_price[0], [prepared_chart_data__option_month_price[1]], [''], 'Option price 1M'),
 
-        plot_pe = getChart(prepared_chart_data__pe[0], [prepared_chart_data__pe[1]], [''], 'PE'),
-        plot_pb = getChart(prepared_chart_data__pb[0], [prepared_chart_data__pb[1]], [''], 'PB'),
-        plot_ps = getChart(prepared_chart_data__ps[0], [prepared_chart_data__ps[1]], [''], 'PS'),
-        plot_pfcf = getChart(prepared_chart_data__pfcf[0], [prepared_chart_data__pfcf[1]], [''], 'PFCF'),
+        plot_margins = getChart(
+            prepared_chart_data__gross_margin[0], 
+            [
+                prepared_chart_data__gross_margin[1],
+                prepared_chart_data__operation_margin[1],
+                prepared_chart_data__net_margin[1]
+            ], 
+            [
+                f'Gross Margin ({prepared_chart_data__gross_margin[1][0]*100:.2f}%)',
+                f'Operating Margin ({prepared_chart_data__operation_margin[1][0]*100:.2f}%)',
+                f'Net Margin ({prepared_chart_data__net_margin[1][0]*100:.2f}%)'
+            ], 
+            'Margins'
+        ),
+
+
+        plot_option_price_1Y = getChart(prepared_chart_data__option_year_price[0], [prepared_chart_data__option_year_price[1]], [''], f'Option price 1Y ({get_safe_value(prepared_chart_data__option_year_price)})'),
+
+        plot_pe = getChart(prepared_chart_data__pe[0], [prepared_chart_data__pe[1]], [''], f'PE ({get_safe_value(prepared_chart_data__pe)})'),
+        plot_pb = getChart(prepared_chart_data__pb[0], [prepared_chart_data__pb[1]], [''], f'PB ({get_safe_value(prepared_chart_data__pb)})'),
+        plot_ps = getChart(prepared_chart_data__ps[0], [prepared_chart_data__ps[1]], [''], f'PS ({get_safe_value(prepared_chart_data__ps)})'),
+        plot_pfcf = getChart(prepared_chart_data__pfcf[0], [prepared_chart_data__pfcf[1]], [''], f'PFCF ({get_safe_value(prepared_chart_data__pfcf)})'),
 
         plot_income_statement = getChart(
             prepared_chart_data__revenue[0], 
@@ -1427,12 +1474,12 @@ def ticker_id(ticker_id: str):
                 prepared_chart_data__net_income[1]
             ], 
             [
-                'Revenue',
-                'Gross Profit',
-                'EBITDA',
-                'Net Income'
+                f'Revenue ({get_safe_growth_rate(prepared_chart_data__revenue)}% p.a.)',
+                f'Gross Profit ({get_safe_growth_rate(prepared_chart_data__gross)}% p.a.)',
+                f'EBITDA ({get_safe_growth_rate(prepared_chart_data__ebitda)}% p.a.)',
+                f'Net Income ({get_safe_growth_rate(prepared_chart_data__net_income)}% p.a.)'
             ], 
-            'Income statement'
+            'Income statement (ttm)'
         ),
 
         plot_balance_sheet = getChart(
@@ -1445,11 +1492,11 @@ def ticker_id(ticker_id: str):
                 prepared_chart_data__cash[1]
             ], 
             [
-                'Assets',
-                'Liabilities',
-                'Equity',
-                'Long debt',
-                'Cash'
+                f'Assets ({get_safe_growth_rate(prepared_chart_data__assets)}% p.a.)',
+                f'Liabilities ({get_safe_growth_rate(prepared_chart_data__liabilities)}% p.a.)',
+                f'Equity ({get_safe_growth_rate(prepared_chart_data__equity)}% p.a.)',
+                f'Long debt ({get_safe_growth_rate(prepared_chart_data__long_term_debt)}% p.a.)',
+                f'Cash ({get_safe_growth_rate(prepared_chart_data__cash)}% p.a.)'
             ], 
             'Balance sheet'
         ),
@@ -1461,15 +1508,26 @@ def ticker_id(ticker_id: str):
                 prepared_chart_data__fcf[1]
             ], 
             [
-                'FCF Operation',
-                'FCF'
+                f'FCF Operation ({get_safe_growth_rate(prepared_chart_data__fcf_oper)}% p.a.)',
+                f'FCF ({get_safe_growth_rate(prepared_chart_data__fcf)}% p.a.)'
             ], 
-            'FCF Statement'
+            'FCF Statement (ttm)'
         ),     
-        
-        plot_shares = getChart(prepared_chart_data__shares[0], [prepared_chart_data__shares[1]], [''], 'Shares outstanding')
+        plot_shares = getChart(prepared_chart_data__shares[0], [prepared_chart_data__shares[1]], [''], f'Shares outstanding ({get_safe_growth_rate(prepared_chart_data__shares)}% p.a.)')
         
     )
+
+def get_safe_value(value):
+    try:
+        return f'{value[1][0]:.2f}'
+    except:
+        return 'NaN'
+
+def get_safe_growth_rate(quarter_growth_data):
+    try:
+        return f'{predict_growth_rate(None, quarter_growth_data[1])[0]*4*100*-1:.2f}'
+    except:
+        return 'NaN'
 
 def sync_ticker_id_list():
     logger.info(f"sync_ticker_id_list - Start")
@@ -1644,7 +1702,6 @@ def update_stock_recommendations():
            logger.error(f"Multiple or no target price for ticker {ticker_id}")
     logger.info(f"update_stock_recommendations - End")
 
-
 def update_dividends_info():
     fmp = FMP()
 
@@ -1666,10 +1723,6 @@ def update_dividends_info():
         metrics = fmp.get_key_metrics_ttm(ticker_id)
         if len(metrics) > 0:
             pass
-
-
-
-    
 
 def download_fundamental_statements():
     logger.info(f"download_fundamental_statements - Start")
@@ -1858,8 +1911,6 @@ def calc_valuation_stocks():
 
     logger.info(f"calc_valuation_stocks - End")
 
-
-
 def run_all_jobs_parallel():
     with ThreadPoolExecutor(max_workers=len(scheduler.get_jobs())) as executor:
         futures = [executor.submit(job.func, *job.args, **job.kwargs) for job in scheduler.get_jobs()]
@@ -1916,7 +1967,7 @@ if __name__ == "__main__":
     #update_ticker_profile(True)
     #update_earnings_calendar()
     
-    #download_prices()
+    download_prices()
     #update_ticker_target_price()
     #update_stock_recommendations()
     #downloadStockOptionData()

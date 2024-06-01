@@ -16,13 +16,9 @@ tests
 
 
 Actual
-- target price - FPM / Yahoo
 - insider transakce
-- valuation - DDM
 - seasonality
-- https://polygon.io/docs/stocks/get_v3_reference_dividends - 5 calls / minute
-- https://polygon.io/docs/stocks/get_vx_reference_financials  - 5 calls / minute ale lze vratit celou historii najednou v jednom dotazu
-- include jmeno a popis firmy
+
 - trendy do budoucna pomoci 1year option price ((sp500))
 - dopocitat denni pe ratio podle annual/qtrly pe a continualni ceny
 - dopocitavat tickery - sectory, industry, cely market
@@ -41,49 +37,3 @@ Actual
 - AI - predam list tickeru, funkci jak prevzit valuacni a dalsi udaje z db/internetu - zhodnoti co je nejlepsi nakoupit a za jakou cenu
      - 2 agenti - 1 ktery vyhodnocuje rizika, pesimisticky, 1 ktery je optimista a vyhodnocuje potencialni rust, musi se dohodnout na kompromisu a vydat vysledek zda a za kolik nakoupit
 
-
-tickers - get row, update name, industry, sector, isin and by all new records in time_data
-- ticker_id
-- name
-- industry
-- sector
-- isin
-- market_cap (latest)
-- price (latest)
-- target_price (latest)
-- pe (latest)
-- recomm_mean (latest)
-- recomm_avg (latest)
-- div_yield (latest)
-- payout_ratio (latest)
-- growth_rate_5y (latest)
-
-tickers_time_data (time series data, new record only if last value changed) - get latest row, if no row or the different value -> store new row
-- tickerId
-- date
-- type (type of metric)
-- value
-
-- market_cap - 0
-- enterprise_value - 1
-- shares_outstanding - 2
-- price - 3
-- target_price - 4
-- eps - 5
-- book_per_share - 6
-- pe - 7
-- pb - 8
-- beta - 9
-- volume - 10
-- avg volume - 11
-- ev/ebitda - 12
-- recomm_mean - 13
-- recomm_count - 14
-- div_yield - 15
-- payout_ratio - 16
-- next 5y growth - 17
-- ROA - 18
-- ROE - 19
-- peg - 20
-- ps - 21
--
