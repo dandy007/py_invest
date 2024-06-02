@@ -1334,6 +1334,19 @@ def portfolio_positions_submit_delete():
 
     return redirect(url_for('portfolio', portfolio_id = portfolio_id))
 
+def prepare_chart_data_EXTEND(ticker_data_list: list[ROW_TickersData], length: int):
+    if len(ticker_data_list) == 0:
+        return prepare_chart_data(ticker_data_list)
+    
+    len_input = len(ticker_data_list)
+    for i in range(1,length - len_input):
+        record = ROW_TickersData()
+        record.value = ticker_data_list[-1].value
+        record.date = ticker_data_list[-1].date - timedelta(days=i)
+        ticker_data_list.insert(0,record)
+    return prepare_chart_data(ticker_data_list)
+    
+
 def prepare_chart_data(ticker_data_list: list[ROW_TickersData]):
     list_x = []
     list_y = []
@@ -1390,14 +1403,25 @@ def ticker_id(ticker_id: str):
 
     annual = 5
     days_back = annual * 250
+    ticker = dao_tickers.select_ticker(ticker_id)
+    eps_discount_row = ROW_TickersData()
+    eps_discount_row.date = datetime.today()
+    eps_discount_row.value = ticker.eps_valuation
+
+    fcf_discount_row = ROW_TickersData()
+    fcf_discount_row.date = datetime.today()
+    fcf_discount_row.value = ticker.fcf_valuation
+
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 3*250)
     prepared_chart_data__price = prepare_chart_data(data_list)
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__TARGET_PRICE, days_back)
-    prepared_chart_data__target_price = prepare_chart_data(data_list)
+    prepared_chart_data__target_price = prepare_chart_data_EXTEND(data_list, days_back)
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPTION_MONTH_AVG_PRICE, days_back)
     prepared_chart_data__option_month_price = prepare_chart_data(data_list)
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPTION_YEAR_AVG_PRICE, days_back)
-    prepared_chart_data__option_year_price = prepare_chart_data(data_list)
+    prepared_chart_data__option_year_price = prepare_chart_data_EXTEND(data_list, days_back)
+    prepared_chart_data__eps_valuation = prepare_chart_data_EXTEND([eps_discount_row], days_back)
+    prepared_chart_data__fcf_valuation = prepare_chart_data_EXTEND([fcf_discount_row], days_back)
 
 
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS, days_back)
@@ -1463,7 +1487,24 @@ def ticker_id(ticker_id: str):
     return render_template(
         'ticker.html', 
         ticker = ticker,
-        plot_price = getChart(prepared_chart_data__price[0], [prepared_chart_data__price[1]], [''], 'Price'),
+        plot_price = getChart(
+            prepared_chart_data__price[0], 
+            [
+                prepared_chart_data__price[1],
+                prepared_chart_data__target_price[1],
+                prepared_chart_data__option_year_price[1],
+                prepared_chart_data__eps_valuation[1],
+                prepared_chart_data__fcf_valuation[1]
+            ], 
+            [
+                f'Price ({prepared_chart_data__price[1][0]:.2f})',
+                f'Analyst target ({get_safe_value(prepared_chart_data__target_price)})',
+                f'Option target ({get_safe_value(prepared_chart_data__option_year_price)})',
+                f'EPS valuation ({get_safe_value(prepared_chart_data__eps_valuation)})',
+                f'FCF valuation ({get_safe_value(prepared_chart_data__fcf_valuation)})'
+            ], 
+            'Price'
+        ),
         plot_target_price = getChart(prepared_chart_data__target_price[0], [prepared_chart_data__target_price[1]], [''], f'Analysts Target Price ({get_safe_value(prepared_chart_data__target_price)})'),
         
         #plot_option_price_1M = getChart(prepared_chart_data__option_month_price[0], [prepared_chart_data__option_month_price[1]], [''], 'Option price 1M'),
@@ -1534,7 +1575,7 @@ def ticker_id(ticker_id: str):
                 prepared_chart_data__fcf[1]
             ], 
             [
-                f'FCF Operation ({get_safe_growth_rate(prepared_chart_data__fcf_oper)}% p.a.)',
+                f'FCF Op ({get_safe_growth_rate(prepared_chart_data__fcf_oper)}% p.a.)',
                 f'FCF ({get_safe_growth_rate(prepared_chart_data__fcf)}% p.a.)'
             ], 
             'FCF Statement (ttm)'
@@ -1638,7 +1679,7 @@ def update_ticker_target_price():
         connection = DB.get_connection_mysql()  
         dao_tickers = DAO_Tickers(connection)
         dao_tickers_data = DAO_TickersData(connection)
-        today = datetime.today().strftime("%Y-%m-%d")
+        today = datetime.today()
 
         db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
         #db_ticker_list = ['AAON' ,'AAPL', 'GOOG', 'MPW']
@@ -1722,29 +1763,33 @@ def update_stock_recommendations():
             #if skip:
             #    continue
             logger.info(f"update_stock_recommendations - {ticker_id} - {counter}/{len(db_ticker_list)}")
-            recommendations = fmp.get_recommendations(ticker_id)
-            if recommendations != None and len(recommendations) > 0:
+            try:
+                recommendations = fmp.get_recommendations(ticker_id)
+                if recommendations != None and len(recommendations) > 0:
 
-                analystRatingsStrongBuy = recommendations[0]['analystRatingsStrongBuy']
-                analystRatingsbuy = recommendations[0]['analystRatingsbuy']
-                analystRatingsHold = recommendations[0]['analystRatingsHold']
-                analystRatingsSell = recommendations[0]['analystRatingsSell']
-                analystRatingsStrongSell = recommendations[0]['analystRatingsStrongSell']
-                
-                recomm = analystRatingsStrongBuy + (analystRatingsbuy * 2) + (analystRatingsHold * 3) + (analystRatingsSell * 4) + (analystRatingsStrongSell * 5)
-                recomm_count = analystRatingsStrongBuy + analystRatingsbuy + analystRatingsHold + analystRatingsSell + analystRatingsStrongSell
+                    analystRatingsStrongBuy = recommendations[0]['analystRatingsStrongBuy']
+                    analystRatingsbuy = recommendations[0]['analystRatingsbuy']
+                    analystRatingsHold = recommendations[0]['analystRatingsHold']
+                    analystRatingsSell = recommendations[0]['analystRatingsSell']
+                    analystRatingsStrongSell = recommendations[0]['analystRatingsStrongSell']
+                    
+                    recomm = analystRatingsStrongBuy + (analystRatingsbuy * 2) + (analystRatingsHold * 3) + (analystRatingsSell * 4) + (analystRatingsStrongSell * 5)
+                    recomm_count = analystRatingsStrongBuy + analystRatingsbuy + analystRatingsHold + analystRatingsSell + analystRatingsStrongSell
 
-                if recomm_count > 0:
+                    if recomm_count > 0:
 
-                    dict_data = {
-                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__RECOMM_MEAN: recomm / recomm_count,
-                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__RECOMM_COUNT: recomm_count
-                    }
+                        dict_data = {
+                            TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__RECOMM_MEAN: recomm / recomm_count,
+                            TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__RECOMM_COUNT: recomm_count
+                        }
 
-                    dao_tickers.update_ticker_types(ticker_id, dict_data, True)
-                    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__RECOMM_MEAN, recomm / recomm_count, today)
-            else:
-                logger.error(f"Multiple or no target price for ticker {ticker_id}")
+                        dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+                        dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__RECOMM_MEAN, recomm / recomm_count, today)
+                else:
+                    logger.error(f"Multiple or no target price for ticker {ticker_id}")
+            except Exception as e:
+                logger.error(f"Some error {ticker_id} {e}")
+                continue
     except Exception as e:
         logger.error(f"update_stock_recommendations - Error {e}")
     logger.info(f"update_stock_recommendations - End")
@@ -1994,7 +2039,7 @@ if __name__ == "__main__":
 
 
     #scheduler.add_job(sync_ticker_id_list, 'cron', day_of_week='sun', hour=3, minute=30)
-    #scheduler.add_job(update_ticker_profile, 'cron', day_of_week='sun', hour=3, minute=30, args=[False])
+    scheduler.add_job(update_ticker_profile, 'cron', day_of_week='sun', hour=3, minute=30, args=[False])
     scheduler.add_job(update_earnings_calendar, 'cron',day_of_week='sun', hour=3, minute=30)
     
 
@@ -2050,7 +2095,7 @@ if __name__ == "__main__":
     #calc_valuation_ratios_stocks()
     #valuate_stocks()
 
-    #scheduler.start()
+    scheduler.start()
     #run_all_jobs_parallel()
 
 

@@ -99,3 +99,10 @@
     padding: 0;
     flex: 0 0 auto; /* Keep the width of these elements auto */
 }
+.plot_container_50 {
+    width: 50%; /* Make the plot container 25% of the viewport width */
+    height: 20%;
+    margin: 0 0; /* Center the plot container */
+    padding: 0;
+    flex: 0 0 auto; /* Keep the width of these elements auto */
+}
