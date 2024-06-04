@@ -96,15 +96,15 @@ def get_price_discount_z_score(dao_tickers_data : DAO_TickersData, ticker_id:str
             prices_list = prices_list[:length+1]
             vwma_price_diffs = [price - vwma for price, vwma in zip(prices_list, vwma)]
 
-            #std = np.std(vwma_price_diffs)
-            #zscores = stats.zscore(vwma_price_diffs)
-            #probabilities = stats.norm.pdf(zscores)  # Use PDF for probability density
-            probabilities = [0]
+            std = np.std(vwma_price_diffs)
+            zscores = stats.zscore(vwma_price_diffs)
+            probabilities = stats.norm.pdf(zscores)  # Use PDF for probability density
+            #probabilities = [0]
 
             discount = (vwma[0] - prices_list[0])/vwma[0]
 
             if math.isnan(probabilities[0]):
-                return [0.5, discount]
+                return [1.0, discount]
             else:
                 return [probabilities[0], discount]
     finally:
@@ -130,24 +130,37 @@ def calculate_price_discount():
 
             counter += 1
 
-            result = get_price_discount_z_score(dao_tickers_data, ticker_id, 100)
-            if result == None:
+            result100 = get_price_discount_z_score(dao_tickers_data, ticker_id, 100)
+            if result100 == None:
                 continue
-            #prob = result[0]
-            discount = result[1]
+            prob100 = result100[0]
+            discount100 = result100[1]
+            
 
             result200 = get_price_discount_z_score(dao_tickers_data, ticker_id, 200)
             if result200 == None:
                 continue
+            prob200 = result200[0]
             discount200 = result200[1]
 
             result500 = get_price_discount_z_score(dao_tickers_data, ticker_id, 500)
             if result500 == None:
                 continue
+            prob500 = result500[0]
             discount500 = result500[1]
 
-            if (discount500 == None or discount == None or discount200 == None or math.isnan(discount500) or math.isnan(discount) or math.isnan(discount200)):
+            if (discount500 == None or discount100 == None or discount200 == None or math.isnan(discount500) or math.isnan(discount100) or math.isnan(discount200)):
                 continue
+
+            if (prob500 == None or prob100 == None or prob200 == None or math.isnan(prob500) or math.isnan(prob100) or math.isnan(prob200)):
+                continue
+
+            if discount100 < 0:
+                prob100 *= -1
+            if discount200 < 0:
+                prob200 *= -1
+            if discount500 < 0:
+                prob500 *= -1
 
             years_count = 3
 
@@ -183,9 +196,12 @@ def calculate_price_discount():
             #        pfcf_zscore = ((ticker.market_cap/fcf_value) - pfcf_mean_stdev[0]) / pfcf_mean_stdev[0]
 
             dict_data = {
-                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PRICE_DISCOUNT_1: discount,
+                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PRICE_DISCOUNT_1: discount100,
                     TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PRICE_DISCOUNT_2: discount200,
-                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PRICE_DISCOUNT_3: discount500
+                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PRICE_DISCOUNT_3: discount500,
+                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PRICE_PROB_1: prob100,
+                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PRICE_PROB_2: prob200,
+                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PRICE_PROB_3: prob500
             }
             dao_tickers.update_ticker_types(ticker_id, dict_data, True)
 
@@ -1966,7 +1982,7 @@ if __name__ == "__main__":
     #download_fundamental_statements()
     
     #calc_valuation_ratios_stocks()
-    #calculate_price_discount()
+    calculate_price_discount()
     #estimate_growth_stocks()
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
