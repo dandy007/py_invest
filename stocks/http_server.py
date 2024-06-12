@@ -243,7 +243,7 @@ def download_prices():
         counter = 0
         skip = True
         for ticker_id in tickers:
-            #ticker_id='AAPL'
+            #ticker_id='NVDA'
             #ticker: ROW_Tickers
             #if ticker_id == 'PFG':
             #    skip = False
@@ -298,7 +298,7 @@ def download_prices():
                 row.type = TICKERS_TIME_DATA__TYPE__CONST.VOLUME
                 row.value = record['volume']
 
-                if (row.date != None and row.value != None and (len(last_volume_result) == 0 and row.date > last_volume_result[-1].date)):
+                if (row.date != None and row.value != None and (len(last_volume_result) == 0 or row.date > last_volume_result[-1].date)):
                     rows_volume.append(row)
                     date_list.append(row.date)
 
@@ -328,7 +328,7 @@ def calc_valuation_ratios_stocks():
         counter = 0
         for ticker_id in tickers:
             counter += 1
-            #ticker_id = 'NVD.F'
+            #ticker_id = 'NVDA'
 
             if ticker_id not in statement_list:
                 continue
@@ -972,12 +972,13 @@ def calculate_continuous_metrics(earning_metric_const: int, metric_continuous_co
 
         ticker_list_orig = dao_tickers.select_tickers_all__limited_ids()
         statement_list = fmp.get_statement_symbols_list()
+        #ticker_list_orig = ['NVDA']
 
         counter = 0
         for ticker_id in ticker_list_orig:
             counter += 1
             logger.info(f"calculate_continuous_metrics({earning_metric_const}) {counter}/{len(ticker_list_orig)}")
-            #ticker_id = 'AAPL'
+            #ticker_id = 'NVDA'
             #ticker : ROW_Tickers
             if ticker_id not in statement_list:
                 continue
@@ -1737,7 +1738,7 @@ def download_fundamental_statements():
 
         statement_list = fmp.get_statement_symbols_list()
         db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
-        #db_ticker_list = ['AAPL', 'GOOG', 'MPW']
+        #db_ticker_list = ['PATH', 'GOOG', 'MPW']
 
         skip = True
         counter = 0
@@ -1756,7 +1757,7 @@ def download_fundamental_statements():
             last_record = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, 1)
 
             now = date.today()
-            if len(last_record) > 0 and (last_record[0].date - now).days < 90:
+            if len(last_record) > 0 and (now - last_record[0].date).days < 90:
                 continue
 
             income_statement_q_list = fmp.get_income_statement(ticker_id, True)
@@ -2077,11 +2078,11 @@ if __name__ == "__main__":
     #update_ticker_profile(True)
     #update_earnings_calendar()
     
-    download_prices()
+    #download_prices()
     #update_ticker_target_price()
     #update_stock_recommendations()
     #downloadStockOptionData()
-    #download_fundamental_statements()
+    download_fundamental_statements()
     
     #calc_valuation_ratios_stocks()
     #calculate_price_discount()
