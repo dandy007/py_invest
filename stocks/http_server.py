@@ -1919,6 +1919,106 @@ def calc_valuation_stocks():
         logger.error(f"calc_valuation_stocks - Error {e}")
     logger.info(f"calc_valuation_stocks - End")
 
+def calc_ratio_discounts():
+    logger.info(f"calc_ratio_discounts - Start")
+    try:
+
+        connection = DB.get_connection_mysql()  
+        dao_tickers = DAO_Tickers(connection)
+        dao_tickers_data = DAO_TickersData(connection)
+
+        db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
+        today = datetime.today().date()
+
+        counter = 0
+        for ticker_id in db_ticker_list:
+            counter += 1
+            logger.info(f"calc_ratio_discounts - {ticker_id} {counter}/{len(db_ticker_list)}")
+
+            
+            years = 5
+            pe_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS, years * 250)
+            pb_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS, years * 250)
+            ps_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS, years * 250)
+            pfcf_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS, years * 250)
+            
+            max = -9999999999
+            min = 99999999999
+            if len(pe_list) > 0:
+                actual_value = pe_list[0].value
+                for pe in pe_list:
+                    if math.isnan(pe.value) or pe.value == None:
+                        continue
+                    if pe.value > max:
+                        max = pe.value
+                    if pe.value < min:
+                        min = pe.value
+                if abs(max) - abs(min) != 0:
+                    dict_data = {
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PE_DISCOUNT: (1 - (abs(actual_value) - abs(min)) / (abs(max) - abs(min)))
+                    }
+
+                    dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+
+            max = -9999999999
+            min = 99999999999
+            if len(ps_list) > 0:
+                actual_value = ps_list[0].value
+                for ps in ps_list:
+                    if math.isnan(ps.value) or ps.value == None:
+                        continue
+                    if ps.value > max:
+                        max = ps.value
+                    if ps.value < min:
+                        min = ps.value
+                if abs(max) - abs(min) != 0:
+                    dict_data = {
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PS_DISCOUNT: (1 - (abs(actual_value) - abs(min)) / (abs(max) - abs(min)))
+                    }
+
+                    dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+
+            max = -9999999999
+            min = 99999999999
+            if len(pb_list) > 0:
+                actual_value = pb_list[0].value
+                for pb in pb_list:
+                    if math.isnan(pb.value) or pb.value == None:
+                        continue
+                    if pb.value > max:
+                        max = pb.value
+                    if pb.value < min:
+                        min = pb.value
+
+                if abs(max) - abs(min) != 0:
+                    dict_data = {
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PB_DISCOUNT: (1 - (abs(actual_value) - abs(min)) / (abs(max) - abs(min)))
+                    }
+
+                    dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+
+            max = -9999999999
+            min = 99999999999
+            if len(pfcf_list) > 0:
+                actual_value = pfcf_list[0].value
+                for pfcf in pfcf_list:
+                    if math.isnan(pfcf.value) or pfcf.value == None:
+                        continue
+                    if pfcf.value > max:
+                        max = pfcf.value
+                    if pfcf.value < min:
+                        min = pfcf.value
+                if abs(max) - abs(min) != 0:
+                    dict_data = {
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PFCF_DISCOUNT: (1 - (abs(actual_value) - abs(min)) / (abs(max) - abs(min)))
+                    }
+
+                    dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+
+    except Exception as e:
+        logger.error(f"calc_ratio_discounts - Error {e}")
+    logger.info(f"calc_ratio_discounts - End")
+
 def run_all_jobs_parallel():
     with ThreadPoolExecutor(max_workers=len(scheduler.get_jobs())) as executor:
         futures = [executor.submit(job.func, *job.args, **job.kwargs) for job in scheduler.get_jobs()]
@@ -1970,25 +2070,28 @@ if __name__ == "__main__":
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS])
     scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
+
+    scheduler.add_job(calc_ratio_discounts, 'cron',day_of_week='tue-sat', hour=12, minute=30)
     
     #sync_ticker_id_list()
     #update_ticker_profile(True)
     #update_earnings_calendar()
     
-    #download_prices()
+    download_prices()
     #update_ticker_target_price()
     #update_stock_recommendations()
     #downloadStockOptionData()
     #download_fundamental_statements()
     
     #calc_valuation_ratios_stocks()
-    calculate_price_discount()
+    #calculate_price_discount()
     #estimate_growth_stocks()
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
     #calc_valuation_stocks()
+    #calc_ratio_discounts()
 
     #update_ticker_target_price()
     #update_stock_recommendations()
@@ -2006,12 +2109,12 @@ if __name__ == "__main__":
     #calc_valuation_ratios_stocks()
     #valuate_stocks()
 
-    scheduler.start()
+    #scheduler.start()
     #run_all_jobs_parallel()
 
 
     logger.info("Schedulers started v2.")
-    app.run(debug=True,host='0.0.0.0')
+    app.run(debug=False,host='0.0.0.0')
     
 
 
