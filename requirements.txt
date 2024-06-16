@@ -9,3 +9,4 @@ bokeh
 polygon-api-client
 plotly
 fmpsdk
+statsmodels

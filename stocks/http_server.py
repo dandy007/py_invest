@@ -30,7 +30,8 @@ from stocks.frontend import ROW_WebPortfolioPosition
 import plotly.graph_objects as go
 from scipy import stats
 from concurrent.futures import ThreadPoolExecutor
-
+from statsmodels.regression.linear_model import OLS
+from statsmodels.tools import add_constant
 
 app = Flask(__name__, template_folder='frontend/html', static_folder='frontend/html/static')
 scheduler = BackgroundScheduler()
@@ -2029,7 +2030,6 @@ def run_all_jobs_parallel():
             except Exception as e:
                 print(f"Job raised an exception: {e}")
 
-
 if __name__ == "__main__":
     
     #tickerList = get_tickers_download()
@@ -2082,7 +2082,7 @@ if __name__ == "__main__":
     #update_ticker_target_price()
     #update_stock_recommendations()
     #downloadStockOptionData()
-    download_fundamental_statements()
+    #download_fundamental_statements()
     
     #calc_valuation_ratios_stocks()
     #calculate_price_discount()
@@ -2093,6 +2093,7 @@ if __name__ == "__main__":
     #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
     #calc_valuation_stocks()
     #calc_ratio_discounts()
+    #calc_seasonality()
 
     #update_ticker_target_price()
     #update_stock_recommendations()
