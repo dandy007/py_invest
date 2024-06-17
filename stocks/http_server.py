@@ -1254,8 +1254,8 @@ def prepare_chart_data_EXTEND(ticker_data_list: list[ROW_TickersData], length: i
     for i in range(1,length - len_input):
         record = ROW_TickersData()
         record.value = ticker_data_list[-1].value
-        record.date = ticker_data_list[-1].date - timedelta(days=i)
-        ticker_data_list.insert(0,record)
+        record.date = ticker_data_list[-1].date - timedelta(days=1)
+        ticker_data_list.append(record)
     return prepare_chart_data(ticker_data_list)
     
 
@@ -1324,7 +1324,7 @@ def ticker_id(ticker_id: str):
     fcf_discount_row.date = datetime.today()
     fcf_discount_row.value = ticker.fcf_valuation
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 3*250)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, days_back)
     prepared_chart_data__price = prepare_chart_data(data_list)
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__TARGET_PRICE, days_back)
     prepared_chart_data__target_price = prepare_chart_data_EXTEND(data_list, days_back)
