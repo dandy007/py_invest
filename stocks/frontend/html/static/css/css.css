@@ -106,3 +106,27 @@
     padding: 0;
     flex: 0 0 auto; /* Keep the width of these elements auto */
 }
+
+
+.trading-table th, .trading-table td, .trading-table tr {
+    padding: 10px;
+    text-align: left;
+    border: 1px solid #ddd; /* Light gray border for cells */
+    font-size: small;
+}
+
+.neutral {
+    background-color: white;
+}
+.bull {
+    background-color: lightgreen;
+}
+.bull_extra {
+    background-color: green;
+}
+.bear {
+    background-color: lightcoral;
+}
+.bear_extra {
+    background-color: red;
+}

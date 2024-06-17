@@ -110,6 +110,24 @@ class FMP:
         else:
             raise Exception("Status code <> 200")
     
+# TRADING ###################################################################################################################################################
+
+    def get_forex_list(self):
+        return fmpsdk.forex_list(os.getenv("FMP_API_KEY"))
+    
+    def get_commodities_list(self):
+        return fmpsdk.commodities_list(os.getenv("FMP_API_KEY"))
+    
+    def fetch_candles(self, symbol: str, time_delta: str, from_date: str, to_date: str):
+        return fmpsdk.historical_chart(os.getenv("FMP_API_KEY"), symbol, time_delta, from_date, to_date)
+    
+    def fetch_cot(self, symbol: str, from_date: str, to_date: str):
+        return fmpsdk.commitment_of_traders_report(os.getenv("FMP_API_KEY"), symbol, from_date, to_date)
+    
+    def fetch_cot_analysis(self, symbol: str, from_date: str, to_date: str):
+        return fmpsdk.commitment_of_traders_report_analysis(os.getenv("FMP_API_KEY"), symbol, from_date, to_date)
+
+
 ####################################################################################################################################################
 
 if __name__ == "__main__":
