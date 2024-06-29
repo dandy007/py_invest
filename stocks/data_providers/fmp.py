@@ -4,6 +4,7 @@ from datetime import datetime
 
 from .fmp_metrics import FMP_Metrics
 from dotenv import load_dotenv
+import pandas as pd
 
 import fmpsdk
 
@@ -119,6 +120,13 @@ class FMP:
         return fmpsdk.commodities_list(os.getenv("FMP_API_KEY"))
     
     def fetch_candles(self, symbol: str, time_delta: str, from_date: str, to_date: str):
+        if time_delta in ('D', 'W', 'M'):
+            daily_data = fmpsdk.historical_price_full(os.getenv("FMP_API_KEY"), symbol, from_date, to_date)
+            if time_delta == 'D':
+                return daily_data
+            else:
+                return aggregate_daily_candles(time_delta, daily_data)
+
         return fmpsdk.historical_chart(os.getenv("FMP_API_KEY"), symbol, time_delta, from_date, to_date)
     
     def fetch_cot(self, symbol: str, from_date: str, to_date: str):
@@ -129,6 +137,25 @@ class FMP:
 
 
 ####################################################################################################################################################
+
+def aggregate_daily_candles(target_timeframe: str, daily_data: list):
+    df = pd.DataFrame(daily_data)
+
+    if 'date' not in df.columns:
+        return daily_data
+
+    df['date'] = pd.to_datetime(df['date'])
+    df.set_index('date', inplace=True)
+    target_ohlc = df.resample(target_timeframe).agg({
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last'
+    }).reset_index()
+
+    target_ohlc = target_ohlc.iloc[::-1]
+
+    return target_ohlc.to_dict('records')
 
 if __name__ == "__main__":
     pass

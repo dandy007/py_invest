@@ -13,13 +13,14 @@
             <th>Symbol</th>
             <th>COT longterm</th>
             <th>COT shortterm</th>
-            <th>Seasonality</th>
-            <th>VWMA trend 4H</th>
-            <th>VWMA trend 1D</th>
-            <th>VWMA trend 1W</th>
-            <th>VWMA STDEV 4H</th>
-            <th>VWMA STDEV 1D</th>
-            <th>VWMA STDEV 1W</th>
+            <th>VWMA PROB LONGTERM</th>
+            <th>VWMA PROB SHORTERM</th>
+            <th>ENGULF MONTH</th>
+            <th>ENGULF WEEK</th>
+            <th>ENGULF DAY</th>
+            <th>ENGULF 4h</th>
+            <th>ENGULF 1h</th>
+            <th>ENGULF 5m</th>
             <th>TOTAL</th>
         </thead>
         {% for symbol_record in symbol_list %}
@@ -51,13 +52,62 @@
                 bear_extra
             {% endif %}
         ">{{symbol_record.cot_shortterm}}</td>
-            <td> </td>
-            <td> </td>
-            <td> </td>
-            <td> </td>
-            <td> </td>
-            <td> </td>
-            <td> </td>
+            <td>{{symbol_record.vwma_prob[0]}}</td>
+            <td>{{symbol_record.vwma_prob[1]}}</td>
+            <td class="
+            {% if symbol_record.engulf_month == 0 %}
+                neutral
+            {% elif symbol_record.engulf_month > 0 %}
+                bull
+            {% elif symbol_record.engulf_month < 0 %}
+                bear
+            {% endif %}
+        ">{{symbol_record.engulf_month}}</td>
+            <td class="
+            {% if symbol_record.engulf_week == 0 %}
+                neutral
+            {% elif symbol_record.engulf_week > 0 %}
+                bull
+            {% elif symbol_record.engulf_week < 0 %}
+                bear
+            {% endif %}
+        ">{{symbol_record.engulf_week}}</td>
+            <td class="
+            {% if symbol_record.engulf_day == 0 %}
+                neutral
+            {% elif symbol_record.engulf_day > 0 %}
+                bull
+            {% elif symbol_record.engulf_day < 0 %}
+                bear
+            {% endif %}
+        ">{{symbol_record.engulf_day}}</td>
+        <td class="
+            {% if symbol_record.engulf_4h == 0 %}
+                neutral
+            {% elif symbol_record.engulf_4h > 0 %}
+                bull
+            {% elif symbol_record.engulf_4h < 0 %}
+                bear
+            {% endif %}
+        ">{{symbol_record.engulf_4h}}</td>
+        <td class="
+        {% if symbol_record.engulf_1h == 0 %}
+            neutral
+        {% elif symbol_record.engulf_1h > 0 %}
+            bull
+        {% elif symbol_record.engulf_1h < 0 %}
+            bear
+        {% endif %}
+    ">{{symbol_record.engulf_1h}}</td>
+    <td class="
+        {% if symbol_record.engulf_5m == 0 %}
+            neutral
+        {% elif symbol_record.engulf_5m > 0 %}
+            bull
+        {% elif symbol_record.engulf_5m < 0 %}
+            bear
+        {% endif %}
+    ">{{symbol_record.engulf_5m}}</td>
             <td class="
             {% if symbol_record.total == 0 %}
                 neutral

@@ -150,61 +150,178 @@ def get_cot_symbol_parts(symbol: str):
         result[1] = SYMBOL_TO_COT[symbol[-3:]]
     return result
 
+
+def get_price_discount_z_score(price_data : list, length: int) -> []:
+    try:
+        list_prices = []
+        list_volumes = []
+        for i in range(1, len(price_data)):
+            list_prices.append(price_data[len(price_data) - i]['close'])
+            list_volumes.append(price_data[len(price_data) - i]['volume'])
+
+        if len(list_prices) >= length:
+            prices_list = []
+            volumes_list = []
+            for price, volume in zip(list_prices, list_volumes):
+                prices_list.append(price)
+                volumes_list.append(volume)
+
+            vwma = []
+            prices = np.array(prices_list)
+            volumes = np.array(volumes_list)
+            for i in range(len(prices) - length + 1):
+                price_slice = prices[i:i+length]
+                volume_slice = volumes[i:i+length]
+                vwma_value = np.sum(price_slice * volume_slice) / np.sum(volume_slice)
+                vwma.append(vwma_value)
+            
+            if math.isnan(vwma[0]):
+                return None
+
+            prices_list = prices_list[-len(vwma):]
+            vwma_price_diffs = [price - vwma for price, vwma in zip(prices_list, vwma)]
+
+            std = np.std(vwma_price_diffs)
+            zscores = stats.zscore(vwma_price_diffs)
+            probabilities = stats.norm.pdf(zscores)  # Use PDF for probability density
+            #probabilities = [0]
+
+            discount = (vwma[0] - prices_list[0])/vwma[0]
+
+            if math.isnan(probabilities[-1]):
+                return [1.0, vwma]
+            else:
+                return [probabilities[-1], vwma]
+    finally:
+        pass
+
 def load_symbol_analysis():
     result = []
     all_symbols = FOREX_LIST + COMMODITY_LIST
+    #all_symbols = ['EURUSD']
 
     cot_data = fetch_cot_analysis(COT_LIST)
+    #cot_data = []
+    candle_data_list = {
+        'M' : fetch_candles_last(all_symbols, 'M', 0),
+        'W' : fetch_candles_last(all_symbols, 'W', 0),
+        'D' : fetch_candles_last(all_symbols, 'D', 0),
+        '4H' : fetch_candles_last(all_symbols, '4hour', 0),  
+        'H' : fetch_candles_last(all_symbols, '1hour', 0),  
+        'M5' : fetch_candles_last(all_symbols, '5min', 0)
+    }
 
     for symbol in all_symbols:
         analyze = ROW_TickerAnalyze()
+        analyze.vwma_prob = [0,0]
         analyze.symbol = symbol
 
-        symbol_parts = get_cot_symbol_parts(symbol)
-        cot_parts = [None, None]
-        cot_parts[0] = cot_data[symbol_parts[0]][0]
-        cot_parts[1] = cot_data[symbol_parts[1]][0]
-
-        if 'Bullish' in cot_parts[0]['marketSituation']:
-            analyze.cot_longterm += 1
-        elif 'Bearish' in cot_parts[0]['marketSituation']:
-            analyze.cot_longterm -= 1
-        else:
-            raise Exception()
-            # analyze.cot_longterm = None
-
-        if 'Bullish' in cot_parts[1]['marketSituation']:
-            analyze.cot_longterm -= 1
-        elif 'Bearish' in cot_parts[1]['marketSituation']:
-            analyze.cot_longterm += 1
-        else:
-            raise Exception()
-            # analyze.cot_longterm = None
-
         
-        if 'Bullish' in cot_parts[0]['marketSentiment']:
-            analyze.cot_shortterm += 1
-            if 'Increasing' in cot_parts[0]['marketSentiment']:
-                analyze.cot_shortterm += 1
-        elif 'Bearish' in cot_parts[0]['marketSentiment']:
-            analyze.cot_shortterm -= 1
-            if 'Increasing' in cot_parts[0]['marketSentiment']:
-                analyze.cot_shortterm -= 1
-        else:
-            raise Exception()
-        
-        if 'Bullish' in cot_parts[1]['marketSentiment']:
-            analyze.cot_shortterm -= 1
-            if 'Increasing' in cot_parts[1]['marketSentiment']:
-                analyze.cot_shortterm -= 1
-        elif 'Bearish' in cot_parts[1]['marketSentiment']:
-            analyze.cot_shortterm += 1
-            if 'Increasing' in cot_parts[1]['marketSentiment']:
-                analyze.cot_shortterm += 1
-        else:
-            raise Exception()
+        count = -1
+        for timeframe, candle_data in candle_data_list.items():
+            data = None
+            if timeframe == 'H':
+                count = 0
+            if timeframe == 'M5':
+                count = 1
+            for symbol_data in candle_data:
+                if symbol_data[0][0] == symbol:
+                    data = symbol_data[1]
+                    break
+    
+            if data == None:
+                continue
 
-        analyze.total = analyze.cot_longterm + analyze.cot_shortterm
+            # Technical analyze
+            tech_result = 0
+            data_len = len(data)
+            if (timeframe in ('W', 'M', 'D', '4H', 'H', 'M5') and data_len >= 5):
+                for i in range(1, 5):
+                    record = data[5-i]
+                    prev_record = data[6-i]
+                    if record['close'] > prev_record['high']:
+                        tech_result = 1
+                    if record['close'] < prev_record['low']:
+                        tech_result = -1
+
+                if tech_result != 0:
+                    if timeframe == 'M5':
+                        analyze.engulf_5m = tech_result
+                    if timeframe == 'H':
+                        analyze.engulf_1h = tech_result
+                    if timeframe == '4H':
+                        analyze.engulf_4h = tech_result
+                    if timeframe == 'D':
+                        analyze.engulf_day = tech_result
+                    if timeframe == 'W':
+                        analyze.engulf_week = tech_result
+                    if timeframe == 'M':
+                        analyze.engulf_month = tech_result
+
+
+            # ===================== VWMA
+            if (timeframe not in ('W', 'M', 'D')):
+                vwma_data100 = get_price_discount_z_score(data, 100)
+                vwma_data200 = get_price_discount_z_score(data, 200)
+                if vwma_data100 == None or vwma_data200 == None:
+                    continue
+                vwma100 = vwma_data100[1]
+                vwma200 = vwma_data200[1]
+                prob100 = vwma_data100[0]
+                prob200 = vwma_data200[0]
+                if (prob100 < 0.15 or prob200 < 0.15) and len(vwma200) > 200:
+                    isBull100 = vwma100[-100] < vwma100[-1]
+                    isBull200 = vwma200[-200] < vwma200[-1]
+                    if (isBull100 and data[0]['close'] < vwma100[-1]) or (not isBull100 and data[0]['close'] > vwma100[-1]) or (isBull200 and data[0]['close'] < vwma200[-1]) or (not isBull200 and data[0]['close'] > vwma200[-1]):
+                        analyze.vwma_prob[count] = 1
+            
+            # ===================== COT report
+            if (timeframe in ('H')):
+                symbol_parts = get_cot_symbol_parts(symbol)
+                cot_parts = [None, None]
+                cot_parts[0] = cot_data[symbol_parts[0]][0]
+                cot_parts[1] = cot_data[symbol_parts[1]][0]
+
+                if 'Bullish' in cot_parts[0]['marketSituation']:
+                    analyze.cot_longterm += 1
+                elif 'Bearish' in cot_parts[0]['marketSituation']:
+                    analyze.cot_longterm -= 1
+                else:
+                    raise Exception()
+                    # analyze.cot_longterm = None
+
+                if 'Bullish' in cot_parts[1]['marketSituation']:
+                    analyze.cot_longterm -= 1
+                elif 'Bearish' in cot_parts[1]['marketSituation']:
+                    analyze.cot_longterm += 1
+                else:
+                    raise Exception()
+                    # analyze.cot_longterm = None
+
+                
+                if 'Bullish' in cot_parts[0]['marketSentiment']:
+                    analyze.cot_shortterm += 1
+                    if 'Increasing' in cot_parts[0]['marketSentiment']:
+                        analyze.cot_shortterm += 1
+                elif 'Bearish' in cot_parts[0]['marketSentiment']:
+                    analyze.cot_shortterm -= 1
+                    if 'Increasing' in cot_parts[0]['marketSentiment']:
+                        analyze.cot_shortterm -= 1
+                else:
+                    raise Exception()
+                
+                if 'Bullish' in cot_parts[1]['marketSentiment']:
+                    analyze.cot_shortterm -= 1
+                    if 'Increasing' in cot_parts[1]['marketSentiment']:
+                        analyze.cot_shortterm -= 1
+                elif 'Bearish' in cot_parts[1]['marketSentiment']:
+                    analyze.cot_shortterm += 1
+                    if 'Increasing' in cot_parts[1]['marketSentiment']:
+                        analyze.cot_shortterm += 1
+                else:
+                    raise Exception()
+
+                analyze.total = analyze.cot_longterm + analyze.cot_shortterm + analyze.engulf_month + analyze.engulf_week + analyze.engulf_day
         result.append(analyze)
     return result
 
