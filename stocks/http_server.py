@@ -32,6 +32,7 @@ from scipy import stats
 from concurrent.futures import ThreadPoolExecutor
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools import add_constant
+import traceback
 
 app = Flask(__name__, template_folder='frontend/html', static_folder='frontend/html/static')
 scheduler = BackgroundScheduler()
@@ -227,6 +228,7 @@ def calculate_price_discount():
             logger.info(f"Discount({ticker_id}) {counter}/{len(tickers)}")
     except Exception as e:
         logger.error(f"calculate_price_discount - Error {e}")
+        traceback.print_exc()
     logger.info(f"calculate_price_discount - End")
 
 def download_prices():
@@ -308,6 +310,7 @@ def download_prices():
             logger.info(f"download_prices: Updated {ticker_id} {counter}/{len(tickers)} count={len(rows_price)}")
     except Exception as e:
         logger.error(f"download_prices - Error {e}")
+        traceback.print_exc()
     logger.info(f"download_prices - End")
 
 def calc_valuation_ratios_stocks():
@@ -513,6 +516,7 @@ def calc_valuation_ratios_stocks():
             logger.info(f"calc_valuation_ratios_stocks ({ticker_id} - {counter}/{len(tickers)})")
     except Exception as e:
         logger.error(f"calc_valuation_ratios_stocks - Error {e}")
+        traceback.print_exc()
     logger.info(f"calc_valuation_ratios_stocks - End")
 
 def predict_growth_rate(x : list[float], y : list[float]) -> list[float]:
@@ -767,6 +771,7 @@ def estimate_growth_stocks():
             logger.info(f"Updated GROWTH on {ticker_id}")
     except Exception as e:
         logger.error(f"estimate_growth_stocks - Error {e}")
+        traceback.print_exc()
     logger.info(f"estimate_growth_stocks - End")
 
 def notify_earnings():
@@ -861,6 +866,7 @@ def downloadStockOptionData():
                 continue
     except Exception as e:
         logger.error(f"downloadStockOptionData - Error {e}")
+        traceback.print_exc()
     logger.info(f"downloadStockOptionData - End")
            
 def rank_stocks():
@@ -1108,6 +1114,7 @@ def calculate_continuous_metrics(earning_metric_const: int, metric_continuous_co
                 dao_tickers_data.bulk_insert_ticker_data(new_data, True)
     except Exception as e:
         logger.error(f"calculate_continuous_metrics - Error {e}")
+        traceback.print_exc()
     logger.info(f"calculate_continuous_metrics({earning_metric_const}) - End")
 
 def get_option_growth_data(chain, date: str) -> float: # [month_price, year_price]
@@ -1537,6 +1544,7 @@ def sync_ticker_id_list():
                 db_ticker_list.append(ticker_id.upper())
     except Exception as e:
         logger.error(f"sync_ticker_id_list - Error {e}")
+        traceback.print_exc()
     
     logger.info(f"sync_ticker_id_list - End")
 
@@ -1581,6 +1589,7 @@ def update_ticker_profile(refresh: bool):
                     logger.error(f"Multiple or no profile for ticker {ticker_id}")
     except Exception as e:
         logger.error(f"update_ticker_profile - Error {e}")
+        traceback.print_exc()
     logger.info(f"update_ticker_profile - End")
     
 def update_ticker_target_price():
@@ -1622,6 +1631,7 @@ def update_ticker_target_price():
                 logger.error(f"Multiple or no target price for ticker {ticker_id}")
     except Exception as e:
         logger.error(f"update_ticker_target_price - Error {e}")
+        traceback.print_exc()
     logger.info(f"update_ticker_target_price - End")
 
 def update_earnings_calendar():
@@ -1647,6 +1657,7 @@ def update_earnings_calendar():
 
     except Exception as e:
         logger.error(f"update_earnings_calendar - Error {e}")
+        traceback.print_exc()
     logger.info(f"update_earnings_calendar - End")
 
 def update_stock_recommendations():
@@ -1701,9 +1712,11 @@ def update_stock_recommendations():
                     logger.error(f"Multiple or no target price for ticker {ticker_id}")
             except Exception as e:
                 logger.error(f"Some error {ticker_id} {e}")
+                traceback.print_exc()
                 continue
     except Exception as e:
         logger.error(f"update_stock_recommendations - Error {e}")
+        traceback.print_exc()
     logger.info(f"update_stock_recommendations - End")
 
 def update_dividends_info():
@@ -1749,7 +1762,7 @@ def download_fundamental_statements():
             if ticker_id not in statement_list:
                 continue
             
-            #if (ticker_id == "DSGX"):
+            #if (ticker_id == "BRK-A"):
             #    skip = False
             
             #if skip:
@@ -1834,6 +1847,7 @@ def download_fundamental_statements():
                 dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION_Q, cash_flow['operatingCashFlow'], date_d)
     except Exception as e:
         logger.error(f"download_fundamental_statements - Error {e}")
+        traceback.print_exc()
     logger.info(f"download_fundamental_statements - End")
 
 def calc_valuation_stocks():
@@ -1919,6 +1933,7 @@ def calc_valuation_stocks():
             #dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__FCF_VALUATION, safe_target_price_fcf, today)
     except Exception as e:
         logger.error(f"calc_valuation_stocks - Error {e}")
+        traceback.print_exc()
     logger.info(f"calc_valuation_stocks - End")
 
 def calc_ratio_discounts():
@@ -2019,6 +2034,7 @@ def calc_ratio_discounts():
 
     except Exception as e:
         logger.error(f"calc_ratio_discounts - Error {e}")
+        traceback.print_exc()
     logger.info(f"calc_ratio_discounts - End")
 
 def run_all_jobs_parallel():
