@@ -57,6 +57,15 @@ class FMP:
                 return response.json()
         return None
     
+    def get_predictions(self, ticker_id: str):
+        url = f'https://financialmodelingprep.com/api/v3/analyst-estimates/{ticker_id}?apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
+
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
+    
     def get_income_statement(self, ticker_id: str, quaterly: bool):
         return fmpsdk.income_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', 100)
     

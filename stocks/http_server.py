@@ -12,6 +12,8 @@ import requests
 from lxml import html
 import pandas as pd
 import numpy as np
+import os
+from dotenv import load_dotenv
 from sklearn.linear_model import LinearRegression
 from stocks.db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, DAO_Portfolios, ROW_Portfolios, ROW_PortfolioPositions, DAO_PortfolioPositions, TICKERS_TIME_DATA__TYPE__CONST, FUNDAMENTAL_NAME__TO_TYPE__ANNUAL, FUNDAMENTAL_NAME__TO_TYPE__QUATERLY
 from flask import Flask,render_template, render_template_string, request, redirect, url_for
@@ -33,6 +35,11 @@ from concurrent.futures import ThreadPoolExecutor
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools import add_constant
 import traceback
+
+
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__, template_folder='frontend/html', static_folder='frontend/html/static')
 scheduler = BackgroundScheduler()
@@ -250,6 +257,7 @@ def resetAfterSplit(input_ticker_id_list=None):
             download_prices([ticker_id])
             update_ticker_target_price([ticker_id])
             update_stock_recommendations([ticker_id])
+            update_stock_predictions([ticker_id])
             downloadStockOptionData([ticker_id])
             download_fundamental_statements([ticker_id])
             
@@ -1730,6 +1738,89 @@ def update_earnings_calendar():
         traceback.print_exc()
     logger.info(f"update_earnings_calendar - End")
 
+def update_stock_predictions(input_ticker_id_list = None):
+    logger.info(f"update_stock_predictions - Start")
+
+    try:
+        fmp = FMP()
+
+        connection = DB.get_connection_mysql()  
+        dao_tickers = DAO_Tickers(connection)
+        dao_tickers_data = DAO_TickersData(connection)
+
+        #today = datetime.today().strftime("%Y-%m-%d")
+        today = datetime.today().date()
+        current_year = today.year
+
+        db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
+        if (input_ticker_id_list != None):
+            db_ticker_list = input_ticker_id_list
+        #db_ticker_list = ['AAON' ,'AAPL', 'GOOG', 'MPW']
+
+
+        counter = 0
+        skip = True
+        for ticker_id in db_ticker_list:
+            counter += 1
+            #if ticker_id == 'WOBDX':
+            #    skip = False
+            #if skip:
+            #    continue
+            logger.info(f"update_stock_predictions - {ticker_id} - {counter}/{len(db_ticker_list)}")
+            try:
+                predictions = fmp.get_predictions(ticker_id)
+                if predictions != None and len(predictions) > 0:
+                    predictions.sort(key=lambda x: x['date'], reverse=False)
+
+                    start_value_eps = None
+                    end_value_eps = None
+                    periods_eps = 0
+
+                    start_value_rev = None
+                    end_value_rev = None
+                    periods_rev = 0
+
+                    for prediction in predictions:
+                        symbol = prediction['symbol']
+                        date = datetime.strptime(prediction['date'], "%Y-%m-%d").date()
+                        avg_revenue = prediction['estimatedRevenueAvg']
+                        avg_eps = prediction['estimatedEpsAvg']
+
+                        if date.year >= current_year and avg_eps > 0:
+                            if start_value_eps == None:
+                                start_value_eps = avg_eps
+                            end_value_eps = avg_eps
+                            periods_eps = periods_eps + 1
+
+                        if date.year >= current_year and avg_revenue > 0:
+                            if start_value_rev == None:
+                                start_value_rev = avg_revenue
+                            end_value_rev = avg_revenue
+                            periods_rev = periods_rev + 1
+
+                        #dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PREDICT_REV_CAGR, avg_revenue, date)
+                        #dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PREDICT_EPS_CAGR, avg_eps, date)
+                    periods_rev = periods_rev - 1
+                    periods_eps = periods_eps - 1
+
+                    if start_value_eps != None and end_value_eps != None and periods_eps > 0:
+                        dict_data = {
+                            TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PREDICT_EPS_CAGR: (end_value_eps / start_value_eps) ** (1 / periods_eps) - 1,
+                            TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PREDICT_REV_CAGR: (end_value_rev / start_value_rev) ** (1 / periods_rev) - 1
+                        }
+                        dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+                    #    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__RECOMM_MEAN, recomm / recomm_count, today)
+                else:
+                    logger.error(f"Multiple or no target price for ticker {ticker_id}")
+            except Exception as e:
+                logger.error(f"Some error {ticker_id} {e}")
+                traceback.print_exc()
+                continue
+    except Exception as e:
+        logger.error(f"update_stock_predictions - Error {e}")
+        traceback.print_exc()
+    logger.info(f"update_stock_predictions - End")
+
 def update_stock_recommendations(input_ticker_id_list = None):
     logger.info(f"update_stock_recommendations - Start")
 
@@ -2146,79 +2237,74 @@ if __name__ == "__main__":
     #month='*': Execute the task every month
     #day_of_week='mon-fri': Execute the task only on weekdays
 
+    DEV_MODE = os.getenv('DEV_MODE').lower() == "true"
+
     #scheduler.add_job(notify_earnings, 'cron', second='*/10')
 
+    if DEV_MODE == False:
+        #scheduler.add_job(sync_ticker_id_list, 'cron', day_of_week='sun', hour=3, minute=30)
+        scheduler.add_job(update_ticker_profile, 'cron', day_of_week='sun', hour=3, minute=30, args=[False])
+        scheduler.add_job(update_earnings_calendar, 'cron',day_of_week='sun', hour=3, minute=30)
+        
 
+        scheduler.add_job(download_prices, 'cron',day_of_week='tue-sat', hour=0, minute=30)
+        scheduler.add_job(update_ticker_target_price, 'cron',day_of_week='tue-sat', hour=0, minute=30)
+        scheduler.add_job(update_stock_recommendations, 'cron',day_of_week='tue-sat', hour=0, minute=30)
+        scheduler.add_job(update_stock_predictions, 'cron',day_of_week='sat', hour=3, minute=30)
+        scheduler.add_job(downloadStockOptionData, 'cron',day_of_week='tue-sat', hour=0, minute=30)
+        scheduler.add_job(download_fundamental_statements, 'cron',day_of_week='tue-sat', hour=6, minute=30)
+        
 
+        scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+        scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+        scheduler.add_job(calc_valuation_ratios_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+        scheduler.add_job(calc_valuation_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
 
-    #scheduler.add_job(sync_ticker_id_list, 'cron', day_of_week='sun', hour=3, minute=30)
-    scheduler.add_job(update_ticker_profile, 'cron', day_of_week='sun', hour=3, minute=30, args=[False])
-    scheduler.add_job(update_earnings_calendar, 'cron',day_of_week='sun', hour=3, minute=30)
+        scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS])
+        scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
+        scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS])
+        scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
+
+        scheduler.add_job(calc_ratio_discounts, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+
+        scheduler.start()
+        logger.info("Schedulers started v2.")
     
+    if DEV_MODE == True:
+        #sync_ticker_id_list()
+        #update_ticker_profile(True)
+        #update_earnings_calendar()
+        
+        #download_prices()
+        #update_ticker_target_price()
+        #update_stock_recommendations()
+        update_stock_predictions()
+        #downloadStockOptionData()
+        #download_fundamental_statements()
+        
+        #calc_valuation_ratios_stocks()
+        #calculate_price_discount()
+        #estimate_growth_stocks()
+        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
+        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
+        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
+        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
+        #calc_valuation_stocks()
+        #calc_ratio_discounts()
+        #calc_seasonality()
 
-    scheduler.add_job(download_prices, 'cron',day_of_week='tue-sat', hour=0, minute=30)
-    scheduler.add_job(update_ticker_target_price, 'cron',day_of_week='tue-sat', hour=0, minute=30)
-    scheduler.add_job(update_stock_recommendations, 'cron',day_of_week='tue-sat', hour=0, minute=30)
-    scheduler.add_job(downloadStockOptionData, 'cron',day_of_week='tue-sat', hour=0, minute=30)
-    scheduler.add_job(download_fundamental_statements, 'cron',day_of_week='tue-sat', hour=6, minute=30)
-    
+        #update_ticker_target_price()
+        #update_stock_recommendations()
+        #downloadStockOptionData()
 
-    scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
-    scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=12, minute=30)
-    scheduler.add_job(calc_valuation_ratios_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
-    scheduler.add_job(calc_valuation_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+        #update_dividends_info() - asi neni treba
+        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS)
+        #rank_stocks()
+        #calc_valuation_ratios_stocks()
+        #valuate_stocks()
 
-    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS])
-    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
-    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS])
-    scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
-
-    scheduler.add_job(calc_ratio_discounts, 'cron',day_of_week='tue-sat', hour=12, minute=30)
-    
-    #sync_ticker_id_list()
-    #update_ticker_profile(True)
-    #update_earnings_calendar()
-    
-    #download_prices()
-    #update_ticker_target_price()
-    #update_stock_recommendations()
-    #downloadStockOptionData()
-    #download_fundamental_statements()
-    
-    #calc_valuation_ratios_stocks()
-    #calculate_price_discount()
-    #estimate_growth_stocks()
-    #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
-    #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
-    #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
-    #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
-    #calc_valuation_stocks()
-    #calc_ratio_discounts()
-    #calc_seasonality()
-
-
-    #update_ticker_target_price()
-    #update_stock_recommendations()
-    #downloadStockOptionData()
-
-
-    calc_valuation_stocks(['MSFT'])
-
-
-
-
-
-    #update_dividends_info() - asi neni treba
-    #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS)
-    #rank_stocks()
-    #calc_valuation_ratios_stocks()
-    #valuate_stocks()
-
-    #scheduler.start()
     #run_all_jobs_parallel()
 
-
-    logger.info("Schedulers started v2.")
     app.run(debug=False,host='0.0.0.0')
     
 
