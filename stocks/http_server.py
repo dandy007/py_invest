@@ -186,25 +186,6 @@ def calculate_price_discount(input_ticker_id_list=None):
             pfcf_zscore = None
             pb_zscore = None
 
-            #if ticker.pe != None and pe_mean_stdev != None and pe_mean_stdev[0] != None:
-                #pe_zscore = (ticker.pe - pe_mean_stdev[0]) / pe_mean_stdev[1]
-            #    pe_zscore = (ticker.pe - pe_mean_stdev[0]) / pe_mean_stdev[0]
-            
-            #if pb_mean_stdev != None and len(pb_list) > 0 and pb_mean_stdev != None and pb_list[0].value != None and pb_mean_stdev[0] != None:
-                #pb_zscore = (pb_list[0].value - pb_mean_stdev[0]) / pb_mean_stdev[1]
-            #    pb_zscore = (pb_list[0].value - pb_mean_stdev[0]) / pb_mean_stdev[0]
-
-            #fcf_value = 0
-            #if pfcf_mean_stdev != None and len(pfcf_list) >= 4 and pfcf_mean_stdev[0] != None:
-            #    for i in range(1, 5):
-            #        if isinstance(pfcf_list[-i].value, (int, float)):
-            #            fcf_value += pfcf_list[-i].value
-            #        else:
-            #            fcf_value = None
-            #            break
-            #    if fcf_value != None:                       
-                    #pfcf_zscore = ((ticker.market_cap/fcf_value) - pfcf_mean_stdev[0]) / pfcf_mean_stdev[1]
-            #        pfcf_zscore = ((ticker.market_cap/fcf_value) - pfcf_mean_stdev[0]) / pfcf_mean_stdev[0]
 
             dict_data = {
                     TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PRICE_DISCOUNT_1: discount100,
@@ -216,23 +197,28 @@ def calculate_price_discount(input_ticker_id_list=None):
             }
             dao_tickers.update_ticker_types(ticker_id, dict_data, True)
 
-            #if pe_zscore != None:
-            #    dict_data = {
-            #            TICKERS_TIME_DATA__TYPE__CONST.PE_DISCOUNT: pe_zscore
-            #    }
-            #    dao_tickers.update_ticker_types(ticker, dict_data, True)
-            
-            #if pfcf_zscore != None:
-            #    dict_data = {
-            #            TICKERS_TIME_DATA__TYPE__CONST.PFCF_DISCOUNT: pfcf_zscore
-            #    }
-            #    dao_tickers.update_ticker_types(ticker, dict_data, True)
 
-            #if pb_zscore != None:
-            #    dict_data = {
-            #            TICKERS_TIME_DATA__TYPE__CONST.PB_DISCOUNT: pb_zscore
-            #    }
-            #    dao_tickers.update_ticker_types(ticker, dict_data, True)
+            priceList = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 1000)
+
+            if len(priceList) > 30:
+                maxPrice = max(price.value for price in priceList)
+                lastPrice = priceList[0].value
+                monthPrice = priceList[21].value
+                weekPrice = priceList[5].value
+                dayPrice = priceList[1].value
+
+                athDiscount = (maxPrice - lastPrice) / maxPrice if maxPrice != 0 else 0
+                monthDiscount = (monthPrice - lastPrice) / monthPrice if monthPrice != 0 else 0
+                weekDiscount = (weekPrice - lastPrice) / weekPrice if weekPrice != 0 else 0
+                dayDiscount = (dayPrice - lastPrice) / dayPrice if dayPrice != 0 else 0
+
+                dict_data = {
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__ATH_DISCOUNT: athDiscount,
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__MONTH_DISCOUNT: monthDiscount,
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__WEEK_DISCOUNT: weekDiscount,
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__DAY_DISCOUNT: dayDiscount
+                }
+                dao_tickers.update_ticker_types(ticker_id, dict_data, True)
 
             logger.info(f"Discount({ticker_id}) {counter}/{len(tickers)}")
     except Exception as e:
@@ -2278,12 +2264,12 @@ if __name__ == "__main__":
         #download_prices()
         #update_ticker_target_price()
         #update_stock_recommendations()
-        update_stock_predictions()
+        #update_stock_predictions()
         #downloadStockOptionData()
         #download_fundamental_statements()
         
         #calc_valuation_ratios_stocks()
-        #calculate_price_discount()
+        calculate_price_discount()
         #estimate_growth_stocks()
         #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
         #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
