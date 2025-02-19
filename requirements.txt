@@ -10,3 +10,4 @@ polygon-api-client
 plotly
 fmpsdk
 statsmodels
+pybit

@@ -263,7 +263,7 @@ def analyze_support_resistance():
     logger.info("Starting support/resistance analysis")
     connection = get_db_connection()
     cursor_db = connection.cursor()
-    timeframes = ['M', 'W']
+    timeframes = ['M', 'W', 'D', '240']  # Timeframes to analyze (M: minute, W: weekly, D: daily, 240: 4-hour)
     
     try:
         # Get all active tickers
@@ -436,19 +436,8 @@ def analyze_support_resistance():
                     market_data[ticker][timeframe]['supports'] = supports
                     market_data[ticker][timeframe]['resistances'] = resistances
                     market_data[ticker][timeframe]['crosses'] = crosses
-        # Find tickers with crosses in both M and W timeframes
-        for ticker in market_data:
-            m_crosses = market_data[ticker]['M']['crosses']
-            w_crosses = market_data[ticker]['W']['crosses']
-            
-            if len(m_crosses) > 0 and len(w_crosses) > 0:
-                logger.info(f"\nTicker {ticker} has crosses in both M and W timeframes:")
-                logger.info("Monthly crosses:")
-                for cross in m_crosses:
-                    logger.info(f"  {cross['type'].title()} cross at {cross['time']}, level: {cross['level']}")
-                logger.info("Weekly crosses:")
-                for cross in w_crosses:
-                    logger.info(f"  {cross['type'].title()} cross at {cross['time']}, level: {cross['level']}")
+        
+        return market_data
                 
     except Exception as e:
         logger.error(f"Error during support/resistance analysis: {e}")
@@ -458,6 +447,101 @@ def analyze_support_resistance():
         connection.close()
     
     logger.info("Completed support/resistance analysis")
+
+def analyze_price_action():
+    """
+    Analyzes candle data to identify price action patterns (bullish/bearish continuations)
+    between adjacent candles in the newest 4 candles.
+    """
+    logger.info("Starting price action analysis")
+    connection = get_db_connection()
+    cursor_db = connection.cursor()
+    timeframes = ['M', 'W', 'D', '240']
+    
+    try:
+        active_tickers = get_active_tickers_from_db()
+        price_action_data = {}
+
+        # Initialize data structure
+        for ticker in active_tickers:
+            price_action_data[ticker] = {}
+            for timeframe in timeframes:
+                price_action_data[ticker][timeframe] = {
+                    'patterns': []
+                }
+
+        for ticker in active_tickers:
+            for timeframe in timeframes:
+                # Get newest 4 candles for this ticker and timeframe
+                cursor_db.execute("""
+                    SELECT timestamp, o, h, l, c 
+                    FROM candles 
+                    WHERE ticker = %s AND timeframe = %s 
+                    ORDER BY timestamp DESC
+                    LIMIT 4
+                """, (ticker, timeframe))
+                
+                candles = cursor_db.fetchall()[::-1]  # Reverse to get chronological order
+                if len(candles) < 2:  # Need at least 2 candles for analysis
+                    continue
+
+                # Analyze adjacent candles
+                for i in range(len(candles)-1):
+                    current_candle = candles[i]
+                    next_candle = candles[i+1]
+                    
+                    # Check for bullish continuation
+                    if next_candle[4] > current_candle[2]:  # next close > current high
+                        pattern = {
+                            'type': 'BULL',
+                            'time_first': current_candle[0],
+                            'time_second': next_candle[0],
+                            'first_candle': {
+                                'o': current_candle[1],
+                                'h': current_candle[2],
+                                'l': current_candle[3],
+                                'c': current_candle[4]
+                            },
+                            'second_candle': {
+                                'o': next_candle[1],
+                                'h': next_candle[2],
+                                'l': next_candle[3],
+                                'c': next_candle[4]
+                            }
+                        }
+                        price_action_data[ticker][timeframe]['patterns'].append(pattern)
+                    
+                    # Check for bearish continuation
+                    elif next_candle[4] < current_candle[3]:  # next close < current low
+                        pattern = {
+                            'type': 'BEAR',
+                            'time_first': current_candle[0],
+                            'time_second': next_candle[0],
+                            'first_candle': {
+                                'o': current_candle[1],
+                                'h': current_candle[2],
+                                'l': current_candle[3],
+                                'c': current_candle[4]
+                            },
+                            'second_candle': {
+                                'o': next_candle[1],
+                                'h': next_candle[2],
+                                'l': next_candle[3],
+                                'c': next_candle[4]
+                            }
+                        }
+                        price_action_data[ticker][timeframe]['patterns'].append(pattern)
+
+        return price_action_data
+
+    except Exception as e:
+        logger.error(f"Error during price action analysis: {e}")
+        traceback.print_exc()
+    finally:
+        cursor_db.close()
+        connection.close()
+    
+    logger.info("Completed price action analysis")
 
 # --------------------------
 # Main Scheduler Setup
@@ -488,7 +572,67 @@ def main():
     #sync_candles('W')
     #sync_candles('D')
     #sync_candles('240')
-    analyze_support_resistance()
+    support_resistance_data = []
+    price_action_data = []
+    support_resistance_data = analyze_support_resistance()
+    price_action_data = analyze_price_action()
+
+    # Find tickers with crosses in both M and W timeframes
+    #for ticker in support_resistance_data:
+    #    m_crosses = support_resistance_data[ticker]['M']['crosses']
+    #    w_crosses = support_resistance_data[ticker]['W']['crosses']
+        
+    #    if len(m_crosses) > 0 and len(w_crosses) > 0:
+    #        logger.info(f"\nTicker {ticker} has crosses in both M and W timeframes:")
+    #        logger.info("Monthly crosses:")
+    #        for cross in m_crosses:
+    #            logger.info(f"  {cross['type'].title()} cross at {cross['time']}, level: {cross['level']}")
+    #        logger.info("Weekly crosses:")
+    #        for cross in w_crosses:
+    #            logger.info(f"  {cross['type'].title()} cross at {cross['time']}, level: {cross['level']}")
+
+
+    # Find tickers with support crosses in M/W and bullish patterns
+    for ticker in support_resistance_data:
+        m_crosses = support_resistance_data[ticker]['M']['crosses']
+        w_crosses = support_resistance_data[ticker]['W']['crosses']
+        
+        # Check if ticker has support crosses in M or W
+        m_support_crosses = [c for c in m_crosses if c['type'] == 'support']
+        w_support_crosses = [c for c in w_crosses if c['type'] == 'support']
+        
+        # Check if ticker has bullish patterns in M or W
+        m_bull_patterns = []
+        w_bull_patterns = []
+        if ticker in price_action_data:
+            m_bull_patterns = [p for p in price_action_data[ticker]['M']['patterns'] if p['type'] == 'BULL']
+            w_bull_patterns = [p for p in price_action_data[ticker]['W']['patterns'] if p['type'] == 'BULL']
+
+        # Log if ticker has both support crosses and bullish patterns
+        if (m_support_crosses and w_support_crosses) and (m_bull_patterns or w_bull_patterns):
+            logger.info(f"\nSignificant signals for {ticker}:")
+            
+            if m_support_crosses:
+                logger.info("Monthly support crosses:")
+                for cross in m_support_crosses:
+                    logger.info(f"  Support cross at {cross['time']}, level: {cross['level']}")
+            
+            if w_support_crosses:
+                logger.info("Weekly support crosses:")
+                for cross in w_support_crosses:
+                    logger.info(f"  Support cross at {cross['time']}, level: {cross['level']}")
+            
+            if m_bull_patterns:
+                logger.info("Monthly bullish patterns:")
+                for pattern in m_bull_patterns:
+                    logger.info(f"  Bull pattern between {pattern['time_first']} and {pattern['time_second']}")
+            
+            if w_bull_patterns:
+                logger.info("Weekly bullish patterns:")
+                for pattern in w_bull_patterns:
+                    logger.info(f"  Bull pattern between {pattern['time_first']} and {pattern['time_second']}")
+
+    
 
     logger.info("Scheduler started. Running tasks 24/7.")
     try:
