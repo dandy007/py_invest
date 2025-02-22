@@ -543,6 +543,331 @@ def analyze_price_action():
     
     logger.info("Completed price action analysis")
 
+def print_situations():
+
+    support_resistance_data = []
+    price_action_data = []
+    support_resistance_data = analyze_support_resistance()
+    price_action_data = analyze_price_action()
+
+    # Find tickers with crosses in both M and W timeframes
+    #for ticker in support_resistance_data:
+    #    m_crosses = support_resistance_data[ticker]['M']['crosses']
+    #    w_crosses = support_resistance_data[ticker]['W']['crosses']
+        
+    #    if len(m_crosses) > 0 and len(w_crosses) > 0:
+    #        logger.info(f"\nTicker {ticker} has crosses in both M and W timeframes:")
+    #        logger.info("Monthly crosses:")
+    #        for cross in m_crosses:
+    #            logger.info(f"  {cross['type'].title()} cross at {cross['time']}, level: {cross['level']}")
+    #        logger.info("Weekly crosses:")
+    #        for cross in w_crosses:
+    #            logger.info(f"  {cross['type'].title()} cross at {cross['time']}, level: {cross['level']}")
+
+    high_timeframe = 'D'
+    low_timeframe = '240'
+
+    # Find tickers with support crosses in M/W and bullish patterns
+    for ticker in support_resistance_data:
+        m_crosses = support_resistance_data[ticker][high_timeframe]['crosses']
+        w_crosses = support_resistance_data[ticker][low_timeframe]['crosses']
+        
+        # Check if ticker has support crosses in M or W
+        m_support_crosses = [c for c in m_crosses if c['type'] == 'support']
+        w_support_crosses = [c for c in w_crosses if c['type'] == 'support']
+        
+        # Check if ticker has bullish patterns in M or W
+        m_bull_patterns = []
+        w_bull_patterns = []
+        if ticker in price_action_data:
+            m_bull_patterns = [p for p in price_action_data[ticker][high_timeframe]['patterns'] if p['type'] == 'BULL']
+            w_bull_patterns = [p for p in price_action_data[ticker][low_timeframe]['patterns'] if p['type'] == 'BULL']
+
+        # Log if ticker has both support crosses and bullish patterns
+        if (m_support_crosses and w_support_crosses) and (m_bull_patterns or w_bull_patterns):
+            logger.info(f"\nSignificant signals for {ticker}:")
+            
+            if m_support_crosses:
+                logger.info("Monthly support crosses:")
+                for cross in m_support_crosses:
+                    logger.info(f"  Support cross at {cross['time']}, level: {cross['level']}")
+            
+            if w_support_crosses:
+                logger.info("Weekly support crosses:")
+                for cross in w_support_crosses:
+                    logger.info(f"  Support cross at {cross['time']}, level: {cross['level']}")
+            
+            if m_bull_patterns:
+                logger.info("Monthly bullish patterns:")
+                for pattern in m_bull_patterns:
+                    logger.info(f"  Bull pattern between {pattern['time_first']} and {pattern['time_second']}")
+            
+            if w_bull_patterns:
+                logger.info("Weekly bullish patterns:")
+                for pattern in w_bull_patterns:
+                    logger.info(f"  Bull pattern between {pattern['time_first']} and {pattern['time_second']}")
+
+    logger.info("================================================================================================================")
+    logger.info("================================================================================================================")
+    logger.info("================================================================================================================")
+
+
+    for ticker in support_resistance_data:
+        m_crosses = support_resistance_data[ticker][high_timeframe]['crosses']
+        w_crosses = support_resistance_data[ticker][low_timeframe]['crosses']
+        
+        # Check if ticker has support crosses in M or W
+        m_resistance_crosses = [c for c in m_crosses if c['type'] == 'resistance']
+        w_resistance_crosses = [c for c in w_crosses if c['type'] == 'resistance']
+        
+        # Check if ticker has bullish patterns in M or W
+        m_bear_patterns = []
+        w_bear_patterns = []
+        if ticker in price_action_data:
+            m_bear_patterns = [p for p in price_action_data[ticker][high_timeframe]['patterns'] if p['type'] == 'BEAR']
+            w_bear_patterns = [p for p in price_action_data[ticker][low_timeframe]['patterns'] if p['type'] == 'BEAR']
+
+        # Log if ticker has both support crosses and bullish patterns
+        if (m_resistance_crosses and w_resistance_crosses) and (m_bear_patterns or w_bear_patterns):
+            logger.info(f"\nSignificant signals for {ticker}:")
+            
+            if m_resistance_crosses:
+                logger.info("Monthly resistance crosses:")
+                for cross in m_resistance_crosses:
+                    logger.info(f"  Resistance cross at {cross['time']}, level: {cross['level']}")
+            
+            if w_resistance_crosses:
+                logger.info("Weekly resistance crosses:")
+                for cross in w_support_crosses:
+                    logger.info(f"  Resistance cross at {cross['time']}, level: {cross['level']}")
+            
+            if m_bear_patterns:
+                logger.info("Monthly bearish patterns:")
+                for pattern in m_bear_patterns:
+                    logger.info(f"  Bear pattern between {pattern['time_first']} and {pattern['time_second']}")
+            
+            if w_bear_patterns:
+                logger.info("Weekly bearish patterns:")
+                for pattern in w_bear_patterns:
+                    logger.info(f"  Bear pattern between {pattern['time_first']} and {pattern['time_second']}")
+
+def print_downtrend_tickers():
+    connection = get_db_connection()
+    cursor_db = connection.cursor()
+    active_tickers = get_active_tickers_from_db()
+
+    logger.info("\nTickers with latest monthly close in bottom 10% but with overall uptrend:")
+
+    for ticker in active_tickers:
+        try:
+            # Get all monthly candles for this ticker
+            cursor_db.execute("""
+                SELECT h, l, c, timestamp 
+                FROM candles 
+                WHERE ticker = %s AND timeframe = 'M'
+                ORDER BY timestamp ASC
+            """, (ticker,))
+            
+            candles = cursor_db.fetchall()
+            if len(candles) < 6:  # Need at least 6 months of data
+                continue
+
+            # Calculate historical price range with float conversion
+            all_highs = [float(c[0]) for c in candles]
+            all_lows = [float(c[1]) for c in candles]
+            all_closes = [float(c[2]) for c in candles]
+            historical_high = max(all_highs)
+            historical_low = min(all_lows)
+            price_range = historical_high - historical_low
+            
+            # Get latest close with float conversion
+            latest_close = float(candles[-1][2])
+            
+            # Check if latest close is in bottom 10% of range
+            bottom_threshold = historical_low + (price_range * 0.1)
+            
+            # Check for long-term uptrend by comparing averages
+            early_period = all_closes[:len(all_closes)//2]  # First half of data
+            late_period = all_closes[len(all_closes)//2:-3]  # Second half excluding last 3 months
+            
+            early_avg = sum(early_period) / len(early_period)
+            late_avg = sum(late_period) / len(late_period)
+            
+            # If in bottom 10% AND late average is higher than early average (uptrend)
+            if latest_close <= bottom_threshold and late_avg > early_avg * 1.1:  # 10% higher for clear uptrend
+                percent_from_bottom = ((latest_close - historical_low) / price_range) * 100
+                uptrend_strength = ((late_avg - early_avg) / early_avg) * 100
+                logger.info(f"{ticker}: {percent_from_bottom:.1f}% from bottom, {uptrend_strength:.1f}% long-term growth")
+                logger.info(f"  Range: {historical_low:.4f} - {historical_high:.4f}")
+                logger.info(f"  Early avg: {early_avg:.4f}, Late avg: {late_avg:.4f}")
+
+        except Exception as e:
+            logger.error(f"Error processing {ticker}: {e}")
+
+    cursor_db.close()
+    connection.close()
+
+def find_trend_crosses():
+    """
+    Finds tickers in long-term trends that recently crossed key levels:
+    - Downtrend tickers crossing resistance
+    - Uptrend tickers crossing support
+    """
+    logger.info("\nAnalyzing trend tickers with level crosses...")
+    
+    # Get analysis data
+    sr_data = analyze_support_resistance()
+    pa_data = analyze_price_action()
+    
+    connection = get_db_connection()
+    cursor_db = connection.cursor()
+    active_tickers = get_active_tickers_from_db()
+
+    try:
+        for ticker in active_tickers:
+            # Get monthly candles for trend analysis
+            cursor_db.execute("""
+                SELECT h, l, c, timestamp 
+                FROM candles 
+                WHERE ticker = %s AND timeframe = 'M'
+                ORDER BY timestamp ASC
+            """, (ticker,))
+            
+            candles = cursor_db.fetchall()
+            if len(candles) < 6:  # Need at least 6 months
+                continue
+
+            # Calculate trend
+            all_closes = [float(c[2]) for c in candles]
+            early_period = all_closes[:len(all_closes)//2]
+            late_period = all_closes[len(all_closes)//2:-2]
+            
+            early_avg = sum(early_period) / len(early_period)
+            late_avg = sum(late_period) / len(late_period)
+            
+            # Get crosses from both timeframes
+            m_crosses = sr_data[ticker]['M']['crosses'] if ticker in sr_data else []
+            w_crosses = sr_data[ticker]['W']['crosses'] if ticker in sr_data else []
+
+            # Check downtrend with resistance crosses
+            if late_avg < early_avg * 0.9:  # Downtrend
+                resistance_crosses = []
+                for crosses in [m_crosses, w_crosses]:
+                    for cross in crosses:
+                        if cross['type'] == 'resistance':
+                            resistance_crosses.append(cross)
+                
+                if resistance_crosses:
+                    trend_strength = ((early_avg - late_avg) / early_avg) * 100
+                    logger.info(f"\nDOWNTREND ticker with resistance cross: {ticker}")
+                    logger.info(f"Downtrend strength: {trend_strength:.1f}%")
+                    logger.info(f"Early avg: {early_avg:.4f}, Late avg: {late_avg:.4f}")
+                    
+                    for cross in resistance_crosses:
+                        logger.info(f"Resistance cross details:")
+                        logger.info(f"  Timeframe: {cross['timeframe']}")
+                        logger.info(f"  Time: {cross['time']}")
+                        logger.info(f"  Level: {cross['level']}")
+                        logger.info(f"  Candle: O:{cross['candle']['o']} H:{cross['candle']['h']} L:{cross['candle']['l']} C:{cross['candle']['c']}")
+
+            # Check uptrend with support crosses
+            elif late_avg > early_avg * 1.1:  # Uptrend
+                support_crosses = []
+                for crosses in [m_crosses, w_crosses]:
+                    for cross in crosses:
+                        if cross['type'] == 'support':
+                            support_crosses.append(cross)
+                
+                if support_crosses:
+                    trend_strength = ((late_avg - early_avg) / early_avg) * 100
+                    logger.info(f"\nUPTREND ticker with support cross: {ticker}")
+                    logger.info(f"Uptrend strength: {trend_strength:.1f}%")
+                    logger.info(f"Early avg: {early_avg:.4f}, Late avg: {late_avg:.4f}")
+                    
+                    for cross in support_crosses:
+                        logger.info(f"Support cross details:")
+                        logger.info(f"  Timeframe: {cross['timeframe']}")
+                        logger.info(f"  Time: {cross['time']}")
+                        logger.info(f"  Level: {cross['level']}")
+                        logger.info(f"  Candle: O:{cross['candle']['o']} H:{cross['candle']['h']} L:{cross['candle']['l']} C:{cross['candle']['c']}")
+
+    except Exception as e:
+        logger.error(f"Error in find_trend_crosses: {e}")
+        traceback.print_exc()
+    finally:
+        cursor_db.close()
+        connection.close()
+
+def find_aligned_patterns():
+        """
+        Finds tickers that show aligned bullish or bearish patterns across monthly, weekly and daily timeframes
+        in their most recent patterns.
+        """
+        logger.info("\nAnalyzing tickers for aligned patterns across timeframes...")
+        price_action_data = analyze_price_action()
+        
+        # Find bullish alignments
+        bull_aligned = []
+        bear_aligned = []
+        
+        for ticker in price_action_data:
+            # Get latest patterns for each timeframe
+            m_patterns = price_action_data[ticker]['M']['patterns']
+            w_patterns = price_action_data[ticker]['W']['patterns']
+            d_patterns = price_action_data[ticker]['D']['patterns']
+            
+            # Check if there are patterns in all timeframes
+            if not (m_patterns and w_patterns and d_patterns):
+                continue
+                
+            # Get last pattern from each timeframe
+            last_m = m_patterns[-1]
+            last_w = w_patterns[-1]
+            last_d = d_patterns[-1]
+            
+            # Check for bullish alignment
+            if (last_m['type'] == 'BULL' and 
+                last_w['type'] == 'BULL' and 
+                last_d['type'] == 'BULL'):
+                bull_aligned.append({
+                    'ticker': ticker,
+                    'monthly': last_m,
+                    'weekly': last_w,
+                    'daily': last_d
+                })
+                
+            # Check for bearish alignment
+            if (last_m['type'] == 'BEAR' and 
+                last_w['type'] == 'BEAR' and 
+                last_d['type'] == 'BEAR'):
+                bear_aligned.append({
+                    'ticker': ticker,
+                    'monthly': last_m,
+                    'weekly': last_w,
+                    'daily': last_d
+                })
+        
+        # Print results
+        if bull_aligned:
+            logger.info("\nTickers with bullish alignment across M/W/D timeframes:")
+            for entry in bull_aligned:
+                logger.info(f"\n{entry['ticker']}:")
+                logger.info(f"Monthly: {entry['monthly']['time_first']} to {entry['monthly']['time_second']}")
+                logger.info(f"Weekly: {entry['weekly']['time_first']} to {entry['weekly']['time_second']}")
+                logger.info(f"Daily: {entry['daily']['time_first']} to {entry['daily']['time_second']}")
+        
+        if bear_aligned:
+            logger.info("\nTickers with bearish alignment across M/W/D timeframes:")
+            for entry in bear_aligned:
+                logger.info(f"\n{entry['ticker']}:")
+                logger.info(f"Monthly: {entry['monthly']['time_first']} to {entry['monthly']['time_second']}")
+                logger.info(f"Weekly: {entry['weekly']['time_first']} to {entry['weekly']['time_second']}")
+                logger.info(f"Daily: {entry['daily']['time_first']} to {entry['daily']['time_second']}")
+
+        if not (bull_aligned or bear_aligned):
+            logger.info("No tickers found with aligned patterns across timeframes.")
+
+
 # --------------------------
 # Main Scheduler Setup
 # --------------------------
@@ -572,67 +897,14 @@ def main():
     #sync_candles('W')
     #sync_candles('D')
     #sync_candles('240')
-    support_resistance_data = []
-    price_action_data = []
-    support_resistance_data = analyze_support_resistance()
-    price_action_data = analyze_price_action()
 
-    # Find tickers with crosses in both M and W timeframes
-    #for ticker in support_resistance_data:
-    #    m_crosses = support_resistance_data[ticker]['M']['crosses']
-    #    w_crosses = support_resistance_data[ticker]['W']['crosses']
-        
-    #    if len(m_crosses) > 0 and len(w_crosses) > 0:
-    #        logger.info(f"\nTicker {ticker} has crosses in both M and W timeframes:")
-    #        logger.info("Monthly crosses:")
-    #        for cross in m_crosses:
-    #            logger.info(f"  {cross['type'].title()} cross at {cross['time']}, level: {cross['level']}")
-    #        logger.info("Weekly crosses:")
-    #        for cross in w_crosses:
-    #            logger.info(f"  {cross['type'].title()} cross at {cross['time']}, level: {cross['level']}")
+    #print_situations()
+    #print_downtrend_tickers()
+    #find_trend_crosses()
+
+    find_aligned_patterns()
 
 
-    # Find tickers with support crosses in M/W and bullish patterns
-    for ticker in support_resistance_data:
-        m_crosses = support_resistance_data[ticker]['M']['crosses']
-        w_crosses = support_resistance_data[ticker]['W']['crosses']
-        
-        # Check if ticker has support crosses in M or W
-        m_support_crosses = [c for c in m_crosses if c['type'] == 'support']
-        w_support_crosses = [c for c in w_crosses if c['type'] == 'support']
-        
-        # Check if ticker has bullish patterns in M or W
-        m_bull_patterns = []
-        w_bull_patterns = []
-        if ticker in price_action_data:
-            m_bull_patterns = [p for p in price_action_data[ticker]['M']['patterns'] if p['type'] == 'BULL']
-            w_bull_patterns = [p for p in price_action_data[ticker]['W']['patterns'] if p['type'] == 'BULL']
-
-        # Log if ticker has both support crosses and bullish patterns
-        if (m_support_crosses and w_support_crosses) and (m_bull_patterns or w_bull_patterns):
-            logger.info(f"\nSignificant signals for {ticker}:")
-            
-            if m_support_crosses:
-                logger.info("Monthly support crosses:")
-                for cross in m_support_crosses:
-                    logger.info(f"  Support cross at {cross['time']}, level: {cross['level']}")
-            
-            if w_support_crosses:
-                logger.info("Weekly support crosses:")
-                for cross in w_support_crosses:
-                    logger.info(f"  Support cross at {cross['time']}, level: {cross['level']}")
-            
-            if m_bull_patterns:
-                logger.info("Monthly bullish patterns:")
-                for pattern in m_bull_patterns:
-                    logger.info(f"  Bull pattern between {pattern['time_first']} and {pattern['time_second']}")
-            
-            if w_bull_patterns:
-                logger.info("Weekly bullish patterns:")
-                for pattern in w_bull_patterns:
-                    logger.info(f"  Bull pattern between {pattern['time_first']} and {pattern['time_second']}")
-
-    
 
     logger.info("Scheduler started. Running tasks 24/7.")
     try:
