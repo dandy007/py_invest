@@ -205,42 +205,42 @@ def sync_candles(timeframe):
         connection.close()
     logger.info(f"Finished candle sync for timeframe {timeframe}")
 
-    def cleanup_old_candles():
-        """
-        Cleans up the candles table by retaining only the last 100 candles for each ticker and timeframe.
-        """
-        connection = get_db_connection()
-        cursor_db = connection.cursor()
-        try:
-            # Get all unique ticker and timeframe combinations
-            cursor_db.execute("SELECT DISTINCT ticker, timeframe FROM candles")
-            ticker_timeframes = cursor_db.fetchall()
+def cleanup_old_candles():
+    """
+    Cleans up the candles table by retaining only the last 100 candles for each ticker and timeframe.
+    """
+    connection = get_db_connection()
+    cursor_db = connection.cursor()
+    try:
+        # Get all unique ticker and timeframe combinations
+        cursor_db.execute("SELECT DISTINCT ticker, timeframe FROM candles")
+        ticker_timeframes = cursor_db.fetchall()
 
-            for ticker, timeframe in ticker_timeframes:
-                # Delete candles older than the 100 most recent ones for each ticker and timeframe
-                cursor_db.execute(
-                    """
-                    DELETE FROM candles
-                    WHERE ticker = %s AND timeframe = %s AND timestamp NOT IN (
-                        SELECT timestamp FROM (
-                            SELECT timestamp FROM candles
-                            WHERE ticker = %s AND timeframe = %s
-                            ORDER BY timestamp DESC
-                            LIMIT 100
-                        ) AS subquery
-                    )
-                    """,
-                    (ticker, timeframe, ticker, timeframe)
+        for ticker, timeframe in ticker_timeframes:
+            # Delete candles older than the 100 most recent ones for each ticker and timeframe
+            cursor_db.execute(
+                """
+                DELETE FROM candles
+                WHERE ticker = %s AND timeframe = %s AND timestamp NOT IN (
+                    SELECT timestamp FROM (
+                        SELECT timestamp FROM candles
+                        WHERE ticker = %s AND timeframe = %s
+                        ORDER BY timestamp DESC
+                        LIMIT 100
+                    ) AS subquery
                 )
-            connection.commit()
-            logger.info("Cleaned up old candles, retaining only the last 100 candles for each ticker and timeframe.")
-        except Exception as e:
-            logger.error(f"Error cleaning up old candles: {e}")
-        finally:
-            cursor_db.close()
-            connection.close()
+                """,
+                (ticker, timeframe, ticker, timeframe)
+            )
+        connection.commit()
+        logger.info("Cleaned up old candles, retaining only the last 100 candles for each ticker and timeframe.")
+    except Exception as e:
+        logger.error(f"Error cleaning up old candles: {e}")
+    finally:
+        cursor_db.close()
+        connection.close()
 
-    cleanup_old_candles()
+    
 
 # --------------------------
 # Weekly Full Sync Function
@@ -799,73 +799,81 @@ def find_trend_crosses():
         connection.close()
 
 def find_aligned_patterns():
-        """
-        Finds tickers that show aligned bullish or bearish patterns across monthly, weekly and daily timeframes
-        in their most recent patterns.
-        """
-        logger.info("\nAnalyzing tickers for aligned patterns across timeframes...")
-        price_action_data = analyze_price_action()
+    """
+    Finds tickers that show aligned bullish or bearish patterns across monthly, weekly, daily and 4h timeframes
+    in their most recent patterns.
+    """
+    logger.info("\nAnalyzing tickers for aligned patterns across timeframes...")
+    price_action_data = analyze_price_action()
+    
+    # Find bullish alignments
+    bull_aligned = []
+    bear_aligned = []
+    
+    for ticker in price_action_data:
+        # Get latest patterns for each timeframe
+        m_patterns = price_action_data[ticker]['M']['patterns']
+        w_patterns = price_action_data[ticker]['W']['patterns']
+        d_patterns = price_action_data[ticker]['D']['patterns']
+        h4_patterns = price_action_data[ticker]['240']['patterns']
         
-        # Find bullish alignments
-        bull_aligned = []
-        bear_aligned = []
+        # Check if there are patterns in all timeframes
+        if not (m_patterns and w_patterns and d_patterns and h4_patterns):
+            continue
         
-        for ticker in price_action_data:
-            # Get latest patterns for each timeframe
-            m_patterns = price_action_data[ticker]['M']['patterns']
-            w_patterns = price_action_data[ticker]['W']['patterns']
-            d_patterns = price_action_data[ticker]['D']['patterns']
-            
-            # Check if there are patterns in all timeframes
-            if not (m_patterns and w_patterns and d_patterns):
-                continue
-                
-            # Get last pattern from each timeframe
-            last_m = m_patterns[-1]
-            last_w = w_patterns[-1]
-            last_d = d_patterns[-1]
-            
-            # Check for bullish alignment
-            if (last_m['type'] == 'BULL' and 
-                last_w['type'] == 'BULL' and 
-                last_d['type'] == 'BULL'):
-                bull_aligned.append({
-                    'ticker': ticker,
-                    'monthly': last_m,
-                    'weekly': last_w,
-                    'daily': last_d
-                })
-                
-            # Check for bearish alignment
-            if (last_m['type'] == 'BEAR' and 
-                last_w['type'] == 'BEAR' and 
-                last_d['type'] == 'BEAR'):
-                bear_aligned.append({
-                    'ticker': ticker,
-                    'monthly': last_m,
-                    'weekly': last_w,
-                    'daily': last_d
-                })
+        # Get last pattern from each timeframe
+        last_m = m_patterns[-1]
+        last_w = w_patterns[-1]
+        last_d = d_patterns[-1]
+        last_h4 = h4_patterns[-1]
         
-        # Print results
-        if bull_aligned:
-            logger.info("\nTickers with bullish alignment across M/W/D timeframes:")
-            for entry in bull_aligned:
-                logger.info(f"\n{entry['ticker']}:")
-                logger.info(f"Monthly: {entry['monthly']['time_first']} to {entry['monthly']['time_second']}")
-                logger.info(f"Weekly: {entry['weekly']['time_first']} to {entry['weekly']['time_second']}")
-                logger.info(f"Daily: {entry['daily']['time_first']} to {entry['daily']['time_second']}")
+        # Check for bullish alignment
+        if (last_m['type'] == 'BULL' and 
+            last_w['type'] == 'BULL' and 
+            last_d['type'] == 'BULL' and
+            last_h4['type'] == 'BULL'):
+            bull_aligned.append({
+                'ticker': ticker,
+                'monthly': last_m,
+                'weekly': last_w,
+                'daily': last_d,
+                'h4': last_h4
+            })
         
-        if bear_aligned:
-            logger.info("\nTickers with bearish alignment across M/W/D timeframes:")
-            for entry in bear_aligned:
-                logger.info(f"\n{entry['ticker']}:")
-                logger.info(f"Monthly: {entry['monthly']['time_first']} to {entry['monthly']['time_second']}")
-                logger.info(f"Weekly: {entry['weekly']['time_first']} to {entry['weekly']['time_second']}")
-                logger.info(f"Daily: {entry['daily']['time_first']} to {entry['daily']['time_second']}")
+        # Check for bearish alignment
+        if (last_m['type'] == 'BEAR' and 
+            last_w['type'] == 'BEAR' and 
+            last_d['type'] == 'BEAR' and
+            last_h4['type'] == 'BEAR'):
+            bear_aligned.append({
+                'ticker': ticker,
+                'monthly': last_m,
+                'weekly': last_w,
+                'daily': last_d,
+                'h4': last_h4
+            })
+    
+    # Print results
+    if bull_aligned:
+        logger.info("\nTickers with bullish alignment across M/W/D/4H timeframes:")
+        for entry in bull_aligned:
+            logger.info(f"\n{entry['ticker']}:")
+            logger.info(f"Monthly: {entry['monthly']['time_first']} to {entry['monthly']['time_second']}")
+            logger.info(f"Weekly: {entry['weekly']['time_first']} to {entry['weekly']['time_second']}")
+            logger.info(f"Daily: {entry['daily']['time_first']} to {entry['daily']['time_second']}")
+            logger.info(f"4H: {entry['h4']['time_first']} to {entry['h4']['time_second']}")
+    
+    if bear_aligned:
+        logger.info("\nTickers with bearish alignment across M/W/D/4H timeframes:")
+        for entry in bear_aligned:
+            logger.info(f"\n{entry['ticker']}:")
+            logger.info(f"Monthly: {entry['monthly']['time_first']} to {entry['monthly']['time_second']}")
+            logger.info(f"Weekly: {entry['weekly']['time_first']} to {entry['weekly']['time_second']}")
+            logger.info(f"Daily: {entry['daily']['time_first']} to {entry['daily']['time_second']}")
+            logger.info(f"4H: {entry['h4']['time_first']} to {entry['h4']['time_second']}")
 
-        if not (bull_aligned or bear_aligned):
-            logger.info("No tickers found with aligned patterns across timeframes.")
+    if not (bull_aligned or bear_aligned):
+        logger.info("No tickers found with aligned patterns across timeframes.")
 
 
 # --------------------------
@@ -892,17 +900,21 @@ def main():
     #scheduler.add_job(sync_candles, 'cron', args=['D'], hour=0, minute=1, id='sync_D')    # Daily candles
     #scheduler.add_job(sync_candles, 'cron', args=['W'], day_of_week='mon', hour=0, minute=1, id='sync_W')  # Weekly candles
 
-    #weekly_sync()
-    #sync_candles('M')
-    #sync_candles('W')
-    #sync_candles('D')
-    #sync_candles('240')
+    init = True
+
+    if init:
+        weekly_sync()
+        sync_candles('M')
+        sync_candles('W')
+        sync_candles('D')
+        sync_candles('240')
+        cleanup_old_candles()
 
     #print_situations()
     #print_downtrend_tickers()
     #find_trend_crosses()
 
-    find_aligned_patterns()
+    #find_aligned_patterns()
 
 
 
