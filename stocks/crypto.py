@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pybit.unified_trading import HTTP
 from apscheduler.schedulers.blocking import BlockingScheduler
 import traceback
+from concurrent.futures import ThreadPoolExecutor
+from tenacity import retry, wait_exponential, stop_after_attempt
 
 # --------------------------
 # Database Configuration
@@ -32,7 +34,14 @@ DB_PASSWORD = 'dandy'   # <<== Replace with your DB password
 # --------------------------
 # Logging Configuration
 # --------------------------
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('crypto.log', mode='w'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # --------------------------
@@ -147,12 +156,59 @@ def get_active_tickers_from_db():
 # --------------------------
 # Candle Sync Function
 # --------------------------
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3))
+def safe_fetch_kline(session, symbol, timeframe):
+    """
+    Safely fetch kline data with retry logic for rate limiting
+    """
+    response = session.get_kline(
+        symbol=symbol,
+        interval=timeframe,
+        limit=101
+    )
+    if 'ret_code' in response and response['ret_code'] == 10006:
+        raise Exception("Rate limit exceeded")
+    return response
+
+def process_candles(data, connection, timeframe):
+    """
+    Process and store candle data for a single symbol
+    """
+    cursor_db = connection.cursor()
+    try:
+        ticker = data['result']['symbol']
+        candles = data['result']['list']
+        
+        for candle in candles:
+            timestamp_ms = int(candle[0])
+            timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+            o, h, l, c, volume = float(candle[1]), float(candle[2]), float(candle[3]), float(candle[4]), float(candle[5])
+
+            # Check if candle exists
+            cursor_db.execute(
+                "SELECT COUNT(*) FROM candles WHERE ticker = %s AND timestamp = %s AND timeframe = %s",
+                (ticker, timestamp_dt, timeframe)
+            )
+            if cursor_db.fetchone()[0] > 0:
+                continue
+
+            # Insert candle
+            insert_sql = """
+                INSERT INTO candles (ticker, timestamp, timeframe, o, h, l, c, volume)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor_db.execute(insert_sql, (ticker, timestamp_dt, timeframe, o, h, l, c, volume))
+        
+        connection.commit()
+        logger.info(f"Inserted candles for {ticker} on timeframe {timeframe}")
+    except Exception as e:
+        logger.error(f"Error processing candles for {ticker}: {e}")
+    finally:
+        cursor_db.close()
+
 def sync_candles(timeframe):
     """
-    Syncs candle data including the most recent candle for all active tickers.
-    
-    Args:
-        timeframe (str): The timeframe identifier ('M', '240', 'D', 'W')
+    Syncs candle data using parallel processing with rate limiting
     """
     logger.info(f"Starting candle sync for timeframe {timeframe}")
     active_tickers = get_active_tickers_from_db()
@@ -161,48 +217,31 @@ def sync_candles(timeframe):
         return
 
     connection = get_db_connection()
-    cursor_db = connection.cursor()
     session = HTTP()
 
     try:
-        for ticker in active_tickers:
-            try:
-                # Fetch the last 101 candles
-                response = session.get_kline(symbol=ticker, interval=timeframe, limit=101)
-                candles = response['result']['list']
-                if len(candles) < 1:
-                    continue
+        # Fetch data in parallel with rate limiting
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            fetch_tasks = {
+                executor.submit(safe_fetch_kline, session, ticker, timeframe): ticker 
+                for ticker in active_tickers
+            }
+            
+            # Process results as they complete
+            for future in fetch_tasks:
+                try:
+                    data = future.result()
+                    if data and 'result' in data:
+                        process_candles(data, connection, timeframe)
+                except Exception as e:
+                    ticker = fetch_tasks[future]
+                    logger.error(f"Failed to fetch/process data for {ticker}: {e}")
 
-                # Process all candles including the most recent one
-                for candle in candles:
-                    timestamp_ms = int(candle[0])
-                    timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
-                    o, h, l, c, volume = float(candle[1]), float(candle[2]), float(candle[3]), float(candle[4]), float(candle[5])
-
-                    # Check if candle already exists
-                    cursor_db.execute(
-                        "SELECT COUNT(*) FROM candles WHERE ticker = %s AND timestamp = %s AND timeframe = %s",
-                        (ticker, timestamp_dt, timeframe)
-                    )
-                    if cursor_db.fetchone()[0] > 0:
-                        continue
-
-                    # Insert the candle into the database
-                    insert_sql = """
-                        INSERT INTO candles (ticker, timestamp, timeframe, o, h, l, c, volume)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """
-                    cursor_db.execute(insert_sql, (ticker, timestamp_dt, timeframe, o, h, l, c, volume))
-                
-                connection.commit()  # Commit after each ticker
-                logger.info(f"Inserted candles for {ticker} on timeframe {timeframe}")
-            except Exception as e:
-                logger.error(f"Error syncing candles for {ticker} on timeframe {timeframe}: {e}")
     except Exception as e:
         logger.error(f"Error during candle sync: {e}")
     finally:
-        cursor_db.close()
         connection.close()
+    
     logger.info(f"Finished candle sync for timeframe {timeframe}")
 
 def cleanup_old_candles():
@@ -255,7 +294,7 @@ def weekly_sync():
     cleanup_candles()
     logger.info("Weekly sync complete")
 
-def analyze_support_resistance():
+def analyze_support_resistance(timeframes):
     """
     Analyzes candle data to identify supports and resistances across all tickers and timeframes,
     and logs when recent candles cross these levels.
@@ -263,7 +302,6 @@ def analyze_support_resistance():
     logger.info("Starting support/resistance analysis")
     connection = get_db_connection()
     cursor_db = connection.cursor()
-    timeframes = ['M', 'W', 'D', '240']  # Timeframes to analyze (M: minute, W: weekly, D: daily, 240: 4-hour)
     
     try:
         # Get all active tickers
@@ -448,7 +486,7 @@ def analyze_support_resistance():
     
     logger.info("Completed support/resistance analysis")
 
-def analyze_price_action():
+def analyze_price_action(timeframes):
     """
     Analyzes candle data to identify price action patterns (bullish/bearish continuations)
     between adjacent candles in the newest 4 candles.
@@ -456,7 +494,6 @@ def analyze_price_action():
     logger.info("Starting price action analysis")
     connection = get_db_connection()
     cursor_db = connection.cursor()
-    timeframes = ['M', 'W', 'D', '240']
     
     try:
         active_tickers = get_active_tickers_from_db()
@@ -876,6 +913,268 @@ def find_aligned_patterns():
         logger.info("No tickers found with aligned patterns across timeframes.")
 
 
+def find_pattern_sequence():
+    """
+    Finds tickers with specific sequences of events in all timeframes:
+    - Bullish sequence: HT support cross -> LT support cross -> LT bullish pattern
+    - Bearish sequence: HT resistance cross -> LT resistance cross -> LT bearish pattern
+    """
+    logger.info("\nAnalyzing pattern sequences...")
+    
+    # Get analysis data
+    sr_data = analyze_support_resistance()
+    pa_data = analyze_price_action()
+    
+    # Define all timeframe pairs (HT, LT)
+    timeframe_pairs = [
+        ('M', 'W'),
+        ('W', 'D'),
+        ('D', '240'),
+        ('240', '60'),
+        ('60', '15')
+    ]
+    
+    for HT, LT in timeframe_pairs:
+        logger.info(f"\nAnalyzing {HT}/{LT} timeframe pair:")
+        bullish_matches = []
+        bearish_matches = []
+        
+        for ticker in sr_data:
+            # Get crosses and patterns for this ticker
+            ht_crosses = sr_data[ticker][HT]['crosses']
+            lt_crosses = sr_data[ticker][LT]['crosses']
+            lt_patterns = pa_data[ticker][LT]['patterns'] if ticker in pa_data else []
+            
+            # Check for bullish sequence
+            ht_support_crosses = [c for c in ht_crosses if c['type'] == 'support']
+            lt_support_crosses = [c for c in lt_crosses if c['type'] == 'support']
+            lt_bull_patterns = [p for p in lt_patterns if p['type'] == 'BULL']
+            
+            if ht_support_crosses and lt_support_crosses and lt_bull_patterns:
+                latest_ht_cross = ht_support_crosses[-1]
+                latest_lt_cross = lt_support_crosses[-1]
+                latest_lt_bull = lt_bull_patterns[-1]
+                
+                # Check sequence timing
+                ht_time = latest_ht_cross['time']
+                lt_time = latest_lt_cross['time']
+                pattern_time = latest_lt_bull['time_second']
+                
+                if ht_time < lt_time < pattern_time:
+                    bullish_matches.append({
+                        'ticker': ticker,
+                        'ht_cross': latest_ht_cross,
+                        'lt_cross': latest_lt_cross,
+                        'pattern': latest_lt_bull
+                    })
+            
+            # Check for bearish sequence
+            ht_resistance_crosses = [c for c in ht_crosses if c['type'] == 'resistance']
+            lt_resistance_crosses = [c for c in lt_crosses if c['type'] == 'resistance']
+            lt_bear_patterns = [p for p in lt_patterns if p['type'] == 'BEAR']
+            
+            if ht_resistance_crosses and lt_resistance_crosses and lt_bear_patterns:
+                latest_ht_cross = ht_resistance_crosses[-1]
+                latest_lt_cross = lt_resistance_crosses[-1]
+                latest_lt_bear = lt_bear_patterns[-1]
+                
+                # Check sequence timing
+                ht_time = latest_ht_cross['time']
+                lt_time = latest_lt_cross['time']
+                pattern_time = latest_lt_bear['time_second']
+                
+                if ht_time < lt_time < pattern_time:
+                    bearish_matches.append({
+                        'ticker': ticker,
+                        'ht_cross': latest_ht_cross,
+                        'lt_cross': latest_lt_cross,
+                        'pattern': latest_lt_bear
+                    })
+        
+        # Print results for this timeframe pair
+        if bullish_matches:
+            logger.info(f"\nFound {len(bullish_matches)} tickers with bullish sequence ({HT} support -> {LT} support -> {LT} bull):")
+            for match in bullish_matches:
+                logger.info(f"\n{match['ticker']}:")
+                logger.info(f"  {HT} support cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
+                logger.info(f"  {LT} support cross at {match['lt_cross']['time']}, level: {match['lt_cross']['level']}")
+                logger.info(f"  {LT} bullish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+        
+        if bearish_matches:
+            logger.info(f"\nFound {len(bearish_matches)} tickers with bearish sequence ({HT} resistance -> {LT} resistance -> {LT} bear):")
+            for match in bearish_matches:
+                logger.info(f"\n{match['ticker']}:")
+                logger.info(f"  {HT} resistance cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
+                logger.info(f"  {LT} resistance cross at {match['lt_cross']['time']}, level: {match['lt_cross']['level']}")
+                logger.info(f"  {LT} bearish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+        
+        if not (bullish_matches or bearish_matches):
+            logger.info(f"No tickers found matching the sequence criteria for {HT}/{LT} timeframes.")
+
+def find_single_timeframe_sequences(timeframes):
+    """
+    Finds tickers with specific sequences of events within each timeframe:
+    - Bullish sequences: 
+        * higher timeframe support cross -> support cross -> bullish pattern
+        * higher timeframe support cross -> bullish pattern -> support cross
+    - Bearish sequences:
+        * higher timeframe resistance cross -> resistance cross -> bearish pattern
+        * higher timeframe resistance cross -> bearish pattern -> resistance cross
+    """
+    logger.info("\nAnalyzing single timeframe pattern sequences...")
+    
+    # Get analysis data
+    sr_data = analyze_support_resistance(timeframes)
+    pa_data = analyze_price_action(timeframes)
+
+    # Lists to store matches across all timeframes
+    bullish_matches_cs = [] 
+    bullish_matches_sc = []
+    bearish_matches_cr = []
+    bearish_matches_rc = []
+    
+    # Map timeframes to their higher timeframe
+    timeframe_map = {
+        '15': '60',
+        '60': '240',  
+        '240': 'D',
+        'D': 'W',
+        'W': 'M'
+    }
+        
+    for timeframe in timeframes:
+        # Skip monthly timeframe as it has no higher timeframe
+        if timeframe == 'M':
+            continue
+            
+        higher_timeframe = timeframe_map[timeframe]
+        
+        for ticker in sr_data:
+            # Get crosses and patterns for current and higher timeframes
+            crosses = sr_data[ticker][timeframe]['crosses']
+            higher_crosses = sr_data[ticker][higher_timeframe]['crosses']
+            patterns = pa_data[ticker][timeframe]['patterns'] if ticker in pa_data else []
+            
+            # Get filtered crosses and patterns
+            support_crosses = [c for c in crosses if c['type'] == 'support']
+            resistance_crosses = [c for c in crosses if c['type'] == 'resistance']
+            higher_support_crosses = [c for c in higher_crosses if c['type'] == 'support']
+            higher_resistance_crosses = [c for c in higher_crosses if c['type'] == 'resistance']
+            bull_patterns = [p for p in patterns if p['type'] == 'BULL']
+            bear_patterns = [p for p in patterns if p['type'] == 'BEAR']
+            
+            # Check bullish sequences
+            if higher_support_crosses and support_crosses and bull_patterns:
+                # Higher TF Support Cross -> Support Cross -> Pattern
+                for ht_cross in higher_support_crosses:
+                    ht_cross_time = ht_cross['time']
+                    matching_crosses = [c for c in support_crosses if c['time'] > ht_cross_time]
+                    
+                    for cross in matching_crosses:
+                        cross_time = cross['time']
+                        matching_patterns = [p for p in bull_patterns if p['time_first'] > cross_time]
+                        
+                        if matching_patterns:
+                            bullish_matches_cs.append({
+                                'ticker': ticker,
+                                'timeframe': timeframe,
+                                'ht_cross': ht_cross,
+                                'cross': cross,
+                                'pattern': matching_patterns[0]
+                            })
+                
+                # Higher TF Support Cross -> Pattern -> Cross
+                for ht_cross in higher_support_crosses:
+                    ht_cross_time = ht_cross['time']
+                    matching_patterns = [p for p in bull_patterns if p['time_first'] > ht_cross_time]
+                    
+                    for pattern in matching_patterns:
+                        pattern_time = pattern['time_second']
+                        matching_crosses = [c for c in support_crosses if c['time'] > pattern_time]
+                        
+                        if matching_crosses:
+                            bullish_matches_sc.append({
+                                'ticker': ticker,
+                                'timeframe': timeframe,
+                                'ht_cross': ht_cross,
+                                'pattern': pattern,
+                                'cross': matching_crosses[0]
+                            })
+            
+            # Check bearish sequences
+            if higher_resistance_crosses and resistance_crosses and bear_patterns:
+                # Higher TF Resistance Cross -> Resistance Cross -> Pattern
+                for ht_cross in higher_resistance_crosses:
+                    ht_cross_time = ht_cross['time']
+                    matching_crosses = [c for c in resistance_crosses if c['time'] > ht_cross_time]
+                    
+                    for cross in matching_crosses:
+                        cross_time = cross['time']
+                        matching_patterns = [p for p in bear_patterns if p['time_first'] > cross_time]
+                        
+                        if matching_patterns:
+                            bearish_matches_cr.append({
+                                'ticker': ticker,
+                                'timeframe': timeframe,
+                                'ht_cross': ht_cross,
+                                'cross': cross,
+                                'pattern': matching_patterns[0]
+                            })
+                
+                # Higher TF Resistance Cross -> Pattern -> Cross
+                for ht_cross in higher_resistance_crosses:
+                    ht_cross_time = ht_cross['time']
+                    matching_patterns = [p for p in bear_patterns if p['time_first'] > ht_cross_time]
+                    
+                    for pattern in matching_patterns:
+                        pattern_time = pattern['time_second']
+                        matching_crosses = [c for c in resistance_crosses if c['time'] > pattern_time]
+                        
+                        if matching_crosses:
+                            bearish_matches_rc.append({
+                                'ticker': ticker,
+                                'timeframe': timeframe,
+                                'ht_cross': ht_cross,
+                                'pattern': pattern,
+                                'cross': matching_crosses[0]
+                            })
+
+    # Print all results grouped by sequence type
+    if bullish_matches_cs:
+        logger.info(f"\nFound {len(bullish_matches_cs)} tickers with bullish sequence (HT support cross -> support cross -> bull pattern):")
+        for match in bullish_matches_cs:
+            logger.info(f"\n{match['ticker']} (Timeframe: {match['timeframe']}):")
+            logger.info(f"  Higher TF Support cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
+            logger.info(f"  Support cross at {match['cross']['time']}, level: {match['cross']['level']}")
+            logger.info(f"  Bullish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+    
+    if bullish_matches_sc:
+        logger.info(f"\nFound {len(bullish_matches_sc)} tickers with bullish sequence (HT support cross -> bull pattern -> support cross):")
+        for match in bullish_matches_sc:
+            logger.info(f"\n{match['ticker']} (Timeframe: {match['timeframe']}):")
+            logger.info(f"  Higher TF Support cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
+            logger.info(f"  Bullish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+            logger.info(f"  Support cross at {match['cross']['time']}, level: {match['cross']['level']}")
+    
+    if bearish_matches_cr:
+        logger.info(f"\nFound {len(bearish_matches_cr)} tickers with bearish sequence (HT resistance cross -> resistance cross -> bear pattern):")
+        for match in bearish_matches_cr:
+            logger.info(f"\n{match['ticker']} (Timeframe: {match['timeframe']}):")
+            logger.info(f"  Higher TF Resistance cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
+            logger.info(f"  Resistance cross at {match['cross']['time']}, level: {match['cross']['level']}")
+            logger.info(f"  Bearish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+
+    if bearish_matches_rc:
+        logger.info(f"\nFound {len(bearish_matches_rc)} tickers with bearish sequence (HT resistance cross -> bear pattern -> resistance cross):")
+        for match in bearish_matches_rc:
+            logger.info(f"\n{match['ticker']} (Timeframe: {match['timeframe']}):")
+            logger.info(f"  Higher TF Resistance cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
+            logger.info(f"  Bearish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+            logger.info(f"  Resistance cross at {match['cross']['time']}, level: {match['cross']['level']}")
+    
+    if not (bullish_matches_cs or bullish_matches_sc or bearish_matches_cr or bearish_matches_rc):
+        logger.info("No tickers found matching any sequence criteria across all timeframes.")
+
 # --------------------------
 # Main Scheduler Setup
 # --------------------------
@@ -896,25 +1195,36 @@ def main():
 
     # Schedule candle sync jobs for different timeframes:
     #scheduler.add_job(sync_candles, 'cron', args=['M'], day=1, hour=0, minute=1, id='sync_M')  # Monthly candles
-    #scheduler.add_job(sync_candles, 'cron', args=['240'], hour='*/4', minute=1, id='sync_240')  # 4-hour candles
-    #scheduler.add_job(sync_candles, 'cron', args=['D'], hour=0, minute=1, id='sync_D')    # Daily candles
     #scheduler.add_job(sync_candles, 'cron', args=['W'], day_of_week='mon', hour=0, minute=1, id='sync_W')  # Weekly candles
+    #scheduler.add_job(sync_candles, 'cron', args=['D'], hour=0, minute=1, id='sync_D')    # Daily candles
+    #scheduler.add_job(sync_candles, 'cron', args=['240'], hour='0/4', minute=1, id='sync_240')  # 4-hour candles
+    #scheduler.add_job(sync_candles, 'cron', args=['60'], hour='0/1', minute=1, id='sync_60')  # 1-hour candles
+    #scheduler.add_job(sync_candles, 'cron', args=['15'], minute='0/15', second=5, id='sync_15')  # 15-min candles
+
+    #scheduler.add_job(find_single_timeframe_sequences, 'cron', args=[['15']], minute='5/15', second=5, id='find_single_timeframe_sequences')  # 15-min candles
 
     init = True
 
     if init:
-        weekly_sync()
-        sync_candles('M')
-        sync_candles('W')
-        sync_candles('D')
-        sync_candles('240')
+        #weekly_sync()
+        #sync_candles('M')
+        #sync_candles('W')
+        #sync_candles('D')
+        #sync_candles('240')
+        #sync_candles('60')
+        sync_candles('15')
         cleanup_old_candles()
+        pass
 
+    timeframes = ['M', 'W', 'D', '240', '60', '15']
+    #timeframes = ['15']
     #print_situations()
     #print_downtrend_tickers()
     #find_trend_crosses()
-
     #find_aligned_patterns()
+
+    #find_pattern_sequence()
+    find_single_timeframe_sequences(timeframes)
 
 
 
