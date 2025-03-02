@@ -622,79 +622,61 @@ def find_trend_crosses():
         cursor_db.close()
         connection.close()
 
-def find_aligned_patterns():
+def find_aligned_patterns(timeframes):
     """
-    Finds tickers that show aligned bullish or bearish patterns across monthly, weekly, daily and 4h timeframes
+    Finds tickers that show aligned bullish or bearish patterns across specified timeframes
     in their most recent patterns.
     """
     logger.info("\nAnalyzing tickers for aligned patterns across timeframes...")
-    price_action_data = analyze_price_action()
+    price_action_data = analyze_price_action(timeframes)
     
-    # Find bullish alignments
+    # Find bullish and bearish alignments
     bull_aligned = []
     bear_aligned = []
     
     for ticker in price_action_data:
         # Get latest patterns for each timeframe
-        m_patterns = price_action_data[ticker]['M']['patterns']
-        w_patterns = price_action_data[ticker]['W']['patterns']
-        d_patterns = price_action_data[ticker]['D']['patterns']
-        h4_patterns = price_action_data[ticker]['240']['patterns']
+        patterns_by_timeframe = {}
+        for tf in timeframes:
+            if tf in price_action_data[ticker]:
+                patterns = price_action_data[ticker][tf]['patterns']
+                if patterns:  # Only store if patterns exist
+                    patterns_by_timeframe[tf] = patterns[-1]  # Get last pattern
         
-        # Check if there are patterns in all timeframes
-        if not (m_patterns and w_patterns and d_patterns and h4_patterns):
+        # Skip if we don't have patterns for all timeframes
+        if len(patterns_by_timeframe) != len(timeframes):
             continue
-        
-        # Get last pattern from each timeframe
-        last_m = m_patterns[-1]
-        last_w = w_patterns[-1]
-        last_d = d_patterns[-1]
-        last_h4 = h4_patterns[-1]
-        
+            
         # Check for bullish alignment
-        if (last_m['type'] == 'BULL' and 
-            last_w['type'] == 'BULL' and 
-            last_d['type'] == 'BULL' and
-            last_h4['type'] == 'BULL'):
+        if all(p['type'] == 'BULL' for p in patterns_by_timeframe.values()):
             bull_aligned.append({
                 'ticker': ticker,
-                'monthly': last_m,
-                'weekly': last_w,
-                'daily': last_d,
-                'h4': last_h4
+                'patterns': patterns_by_timeframe
             })
-        
+            
         # Check for bearish alignment
-        if (last_m['type'] == 'BEAR' and 
-            last_w['type'] == 'BEAR' and 
-            last_d['type'] == 'BEAR' and
-            last_h4['type'] == 'BEAR'):
+        if all(p['type'] == 'BEAR' for p in patterns_by_timeframe.values()):
             bear_aligned.append({
                 'ticker': ticker,
-                'monthly': last_m,
-                'weekly': last_w,
-                'daily': last_d,
-                'h4': last_h4
+                'patterns': patterns_by_timeframe
             })
     
     # Print results
     if bull_aligned:
-        logger.info("\nTickers with bullish alignment across M/W/D/4H timeframes:")
+        logger.info(f"\nTickers with bullish alignment across {'/'.join(timeframes)} timeframes:")
         for entry in bull_aligned:
             logger.info(f"\n{entry['ticker']}:")
-            logger.info(f"Monthly: {entry['monthly']['time_first']} to {entry['monthly']['time_second']}")
-            logger.info(f"Weekly: {entry['weekly']['time_first']} to {entry['weekly']['time_second']}")
-            logger.info(f"Daily: {entry['daily']['time_first']} to {entry['daily']['time_second']}")
-            logger.info(f"4H: {entry['h4']['time_first']} to {entry['h4']['time_second']}")
+            for tf in timeframes:
+                pattern = entry['patterns'][tf]
+                logger.info(f"{tf}: {pattern['time_first']} to {pattern['time_second']}")
     
     if bear_aligned:
-        logger.info("\nTickers with bearish alignment across M/W/D/4H timeframes:")
+        logger.info(f"\nTickers with bearish alignment across {'/'.join(timeframes)} timeframes:")
         for entry in bear_aligned:
             logger.info(f"\n{entry['ticker']}:")
-            logger.info(f"Monthly: {entry['monthly']['time_first']} to {entry['monthly']['time_second']}")
-            logger.info(f"Weekly: {entry['weekly']['time_first']} to {entry['weekly']['time_second']}")
-            logger.info(f"Daily: {entry['daily']['time_first']} to {entry['daily']['time_second']}")
-            logger.info(f"4H: {entry['h4']['time_first']} to {entry['h4']['time_second']}")
+            for tf in timeframes:
+                pattern = entry['patterns'][tf]
+                logger.info(f"{tf}: {pattern['time_first']} to {pattern['time_second']}")
 
     if not (bull_aligned or bear_aligned):
         logger.info("No tickers found with aligned patterns across timeframes.")
@@ -809,9 +791,24 @@ def find_single_timeframe_sequences(timeframes):
     """
     logger.info("\nAnalyzing single timeframe pattern sequences...")
     
-    # Get analysis data
-    sr_data = analyze_support_resistance(timeframes)
-    pa_data = analyze_price_action(timeframes)
+    # Map timeframes to their higher timeframe
+    timeframe_map = {
+        '15': '60',
+        '60': '240',  
+        '240': 'D',
+        'D': 'W',
+        'W': 'M'
+    }
+    
+    # Create a set of all required timeframes
+    all_timeframes = set(timeframes)
+    for tf in timeframes:
+        if tf != 'M' and tf in timeframe_map:
+            all_timeframes.add(timeframe_map[tf])
+    
+    # Get analysis data with all required timeframes
+    sr_data = analyze_support_resistance(list(all_timeframes))
+    pa_data = analyze_price_action(list(all_timeframes))
 
     # Lists to store matches across all timeframes
     bullish_matches_cs = [] 
@@ -933,6 +930,8 @@ def find_single_timeframe_sequences(timeframes):
             logger.info(f"  Higher TF Support cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
             logger.info(f"  Support cross at {match['cross']['time']}, level: {match['cross']['level']}")
             logger.info(f"  Bullish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+            logger.info(f"  First candle: O:{match['pattern']['first_candle']['o']}, H:{match['pattern']['first_candle']['h']}, L:{match['pattern']['first_candle']['l']}, C:{match['pattern']['first_candle']['c']}")
+            logger.info(f"  Second candle: O:{match['pattern']['second_candle']['o']}, H:{match['pattern']['second_candle']['h']}, L:{match['pattern']['second_candle']['l']}, C:{match['pattern']['second_candle']['c']}")
     
     if bullish_matches_sc:
         logger.info(f"\nFound {len(bullish_matches_sc)} tickers with bullish sequence (HT support cross -> bull pattern -> support cross):")
@@ -940,6 +939,8 @@ def find_single_timeframe_sequences(timeframes):
             logger.info(f"\n{match['ticker']} (Timeframe: {match['timeframe']}):")
             logger.info(f"  Higher TF Support cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
             logger.info(f"  Bullish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+            logger.info(f"  First candle: O:{match['pattern']['first_candle']['o']}, H:{match['pattern']['first_candle']['h']}, L:{match['pattern']['first_candle']['l']}, C:{match['pattern']['first_candle']['c']}")
+            logger.info(f"  Second candle: O:{match['pattern']['second_candle']['o']}, H:{match['pattern']['second_candle']['h']}, L:{match['pattern']['second_candle']['l']}, C:{match['pattern']['second_candle']['c']}")
             logger.info(f"  Support cross at {match['cross']['time']}, level: {match['cross']['level']}")
     
     if bearish_matches_cr:
@@ -949,6 +950,8 @@ def find_single_timeframe_sequences(timeframes):
             logger.info(f"  Higher TF Resistance cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
             logger.info(f"  Resistance cross at {match['cross']['time']}, level: {match['cross']['level']}")
             logger.info(f"  Bearish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+            logger.info(f"  First candle: O:{match['pattern']['first_candle']['o']}, H:{match['pattern']['first_candle']['h']}, L:{match['pattern']['first_candle']['l']}, C:{match['pattern']['first_candle']['c']}")
+            logger.info(f"  Second candle: O:{match['pattern']['second_candle']['o']}, H:{match['pattern']['second_candle']['h']}, L:{match['pattern']['second_candle']['l']}, C:{match['pattern']['second_candle']['c']}")
 
     if bearish_matches_rc:
         logger.info(f"\nFound {len(bearish_matches_rc)} tickers with bearish sequence (HT resistance cross -> bear pattern -> resistance cross):")
@@ -956,6 +959,8 @@ def find_single_timeframe_sequences(timeframes):
             logger.info(f"\n{match['ticker']} (Timeframe: {match['timeframe']}):")
             logger.info(f"  Higher TF Resistance cross at {match['ht_cross']['time']}, level: {match['ht_cross']['level']}")
             logger.info(f"  Bearish pattern from {match['pattern']['time_first']} to {match['pattern']['time_second']}")
+            logger.info(f"  First candle: O:{match['pattern']['first_candle']['o']}, H:{match['pattern']['first_candle']['h']}, L:{match['pattern']['first_candle']['l']}, C:{match['pattern']['first_candle']['c']}")
+            logger.info(f"  Second candle: O:{match['pattern']['second_candle']['o']}, H:{match['pattern']['second_candle']['h']}, L:{match['pattern']['second_candle']['l']}, C:{match['pattern']['second_candle']['c']}")
             logger.info(f"  Resistance cross at {match['cross']['time']}, level: {match['cross']['level']}")
     
     if not (bullish_matches_cs or bullish_matches_sc or bearish_matches_cr or bearish_matches_rc):
@@ -967,6 +972,7 @@ def find_single_timeframe_sequences(timeframes):
 def main():
 
     timeframes = ['M', 'W', 'D', '240', '60', '15']
+    #timeframes = ['D', '240', '60', '15']
     #timeframes = ['15']
     #print_situations()
     #print_downtrend_tickers()
