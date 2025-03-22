@@ -35,6 +35,7 @@ class ROW_Tickers:
     pfcf_discount = None
     option_year_discount = None
     beta = None
+    predict_eps_cagr = None
 
     def __init__(self):
         pass

@@ -208,6 +208,8 @@ class DAO_Tickers:
         ticker.pfcf_discount = row[30]
         ticker.option_year_discount = row[31]
         ticker.beta = row[32]
+        
+        ticker.predict_eps_cagr = row[37]
         return ticker
 
 
