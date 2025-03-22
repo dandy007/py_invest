@@ -22,6 +22,9 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from tenacity import retry, wait_exponential, stop_after_attempt
+import numpy as np
+from scipy import stats
+from sklearn.linear_model import LinearRegression
 
 # --------------------------
 # Database Configuration
@@ -81,31 +84,71 @@ def get_active_tickers_from_db():
         connection.close()
     return active_tickers
 
-def analyze_support_resistance(timeframes):
+def get_candles_data(tickers, timeframes):
     """
-    Analyzes candle data to identify supports and resistances across all tickers and timeframes,
-    and logs when recent candles cross these levels.
+    Retrieves all candle data for given tickers and timeframes from the database.
+    
+    Args:
+        tickers (list): List of ticker symbols
+        timeframes (list): List of timeframe strings
+        
+    Returns:
+        dict: Nested dictionary with structure:
+            {ticker: {timeframe: [(timestamp, o, h, l, c, volume), ...], ...}, ...}
     """
-    logger.info("Starting support/resistance analysis")
+    logger.info("Loading candle data from database...")
     connection = get_db_connection()
     cursor_db = connection.cursor()
-    
+    candles_data = {}
+
     try:
-        # Get all active tickers
-        active_tickers = get_active_tickers_from_db()
+        for ticker in tickers:
+            candles_data[ticker] = {}
+            for timeframe in timeframes:
+                cursor_db.execute("""
+                    SELECT timestamp, o, h, l, c, volume 
+                    FROM candles 
+                    WHERE ticker = %s AND timeframe = %s 
+                    ORDER BY timestamp ASC
+                """, (ticker, timeframe))
+                candles_data[ticker][timeframe] = cursor_db.fetchall()
+                
+    except Exception as e:
+        logger.error(f"Error loading candle data: {e}")
+        traceback.print_exc()
+    finally:
+        cursor_db.close()
+        connection.close()
+        
+    return candles_data
 
-        # Create a dictionary to store data for each ticker/timeframe combination
-        market_data = {}
 
-        # Structure: 
-        # market_data[ticker][timeframe] = {
-        #     'crosses': [],      # List of cross events
-        #     'supports': [],     # List of current support levels
-        #     'resistances': []   # List of current resistance levels
-        # }
+def analyze_support_resistance(tickers, timeframes, candles_data):
+    """
+    Analyzes candle data to identify supports and resistances across specified tickers and timeframes,
+    and logs when recent candles cross these levels.
+    
+    Args:
+        tickers (list): List of ticker symbols to analyze
+        timeframes (list): List of timeframes to analyze 
+        candles_data: Dictionary containing candle data in format:
+            {ticker: {timeframe: [(timestamp, o, h, l, c, volume), ...], ...}, ...}
+    """
+    logger.info("Starting support/resistance analysis")
+    
+    # Create a dictionary to store data for each ticker/timeframe combination
+    market_data = {}
+    
+    # Structure: 
+    # market_data[ticker][timeframe] = {
+    #     'crosses': [],      # List of cross events
+    #     'supports': [],     # List of current support levels
+    #     'resistances': []   # List of current resistance levels
+    # }
 
+    try:
         # Initialize structure for each ticker and timeframe
-        for ticker in active_tickers:
+        for ticker in tickers:
             market_data[ticker] = {}
             for timeframe in timeframes:
                 market_data[ticker][timeframe] = {
@@ -114,26 +157,20 @@ def analyze_support_resistance(timeframes):
                     'resistances': []
                 }
         
-        for ticker in active_tickers:
+        for ticker in tickers:
             for timeframe in timeframes:
-                # Get all candles for this ticker and timeframe, ordered by timestamp
-                cursor_db.execute("""
-                    SELECT timestamp, o, h, l, c 
-                    FROM candles 
-                    WHERE ticker = %s AND timeframe = %s 
-                    ORDER BY timestamp DESC
-                    LIMIT 100
-                """, (ticker, timeframe))
-                
-                candles = cursor_db.fetchall()[::-1]
+                if ticker not in candles_data or timeframe not in candles_data[ticker]:
+                    continue
+                    
+                candles = candles_data[ticker][timeframe][-100:]  # Get last 100 candles
                 if len(candles) < 4:  # Need at least 4 candles for analysis
                     continue
                 
                 last_candle_count = 1
-
+                
                 # Separate recent and historical candles
-                recent_candles = candles[-last_candle_count:]  # Newest 3 candles
-                historical_candles = candles[:-last_candle_count]  # All except last 3 candles
+                recent_candles = candles[-last_candle_count:]  # Newest candle
+                historical_candles = candles[:-last_candle_count]  # All except last candle
                 
                 # Find supports and resistances from historical candles
                 supports = []
@@ -145,29 +182,14 @@ def analyze_support_resistance(timeframes):
                     curr_candle = all_candles[i]
                     prev_candle = all_candles[i-1]
                     
-                    # Check if current candle is crossing any support/resistance
                     # Check if current candle crosses any existing support levels
                     for support in supports[:]:
                         if curr_candle[2] < support['level'] < curr_candle[3] and curr_candle not in recent_candles:
-                            # Log support level cross (commented out for now)
-                            #logger.info(f"""
-                            #    Support crossed for {ticker} ({timeframe})
-                            #    Time: {curr_candle[0]}
-                            #    Support level: {support['level']} (from {support['timestamp']})
-                            #    Crossing candle OHLC: {curr_candle[1]},{curr_candle[2]},{curr_candle[3]},{curr_candle[4]}
-                            #""".strip())
                             supports.remove(support)
                     
                     # Check if current candle crosses any existing resistance levels  
                     for resistance in resistances[:]:
                         if curr_candle[2] < resistance['level'] < curr_candle[3] and curr_candle not in recent_candles:
-                            # Log resistance level cross (commented out for now)
-                            #logger.info(f"""
-                            #    Resistance crossed for {ticker} ({timeframe})
-                            #    Time: {curr_candle[0]}
-                            #    Resistance level: {resistance['level']} (from {resistance['timestamp']})
-                            #    Crossing candle OHLC: {curr_candle[1]},{curr_candle[2]},{curr_candle[3]},{curr_candle[4]}
-                            #""".strip())
                             resistances.remove(resistance)
                     
                     # Check if current and previous candle create new support/resistance
@@ -192,7 +214,7 @@ def analyze_support_resistance(timeframes):
                     level_time = level_data['timestamp']
                     level = level_data['level']
                     
-                    # Check historical candles (excluding 3 most recent)
+                    # Check historical candles
                     for candle in historical_candles:
                         if candle[0] <= level_time:  # Skip candles before level was established
                             continue
@@ -204,21 +226,11 @@ def analyze_support_resistance(timeframes):
                 supports = [s for s in supports if check_crosses(s, historical_candles, True)]
                 resistances = [r for r in resistances if check_crosses(r, historical_candles, False)]
                 crosses = []
-
-                # Print supports and resistances for this ticker and timeframe
-                # if supports or resistances:
-                #     logger.info(f"\nSupport/Resistance levels for {ticker} ({timeframe}):")
-                #     logger.info("Supports:")
-                #     for support in supports:
-                #         logger.info(f"  Level: {support['level']}, Established: {support['timestamp']}")
-                #     logger.info("Resistances:")
-                #     for resistance in resistances:
-                #         logger.info(f"  Level: {resistance['level']}, Established: {resistance['timestamp']}")
                 
-                # Check if latest 3 candles cross any of the filtered support/resistance levels
+                # Check if latest candles cross any of the filtered support/resistance levels
                 for candle in recent_candles:
-                    for support in supports[:]: # Create a copy to safely remove during iteration
-                        if candle[0] > support['timestamp'] and candle[2] >= support['level'] >= candle[3]:  # If candle crosses support
+                    for support in supports[:]:
+                        if candle[0] > support['timestamp'] and candle[2] >= support['level'] >= candle[3]:
                             cross_info = {
                                 'ticker': ticker,
                                 'timeframe': timeframe, 
@@ -229,16 +241,10 @@ def analyze_support_resistance(timeframes):
                                 'candle': {'o': candle[1], 'h': candle[2], 'l': candle[3], 'c': candle[4]}
                             }
                             crosses.append(cross_info)
-                            # logger.info(f"""
-                            #     Recent support cross for {ticker} ({timeframe})
-                            #     Time: {candle[0]}
-                            #     Support level: {support['level']} (from {support['timestamp']})
-                            #     Crossing candle OHLC: {candle[1]},{candle[2]},{candle[3]},{candle[4]}
-                            # """.strip())
-                            supports.remove(support)  # Remove crossed support
+                            supports.remove(support)
                             
-                    for resistance in resistances[:]: # Create a copy to safely remove during iteration
-                        if candle[0] > resistance['timestamp'] and candle[2] >= resistance['level'] >= candle[3]:  # If candle crosses resistance
+                    for resistance in resistances[:]:
+                        if candle[0] > resistance['timestamp'] and candle[2] >= resistance['level'] >= candle[3]:
                             cross_info = {
                                 'ticker': ticker,
                                 'timeframe': timeframe,
@@ -249,13 +255,7 @@ def analyze_support_resistance(timeframes):
                                 'candle': {'o': candle[1], 'h': candle[2], 'l': candle[3], 'c': candle[4]}
                             }
                             crosses.append(cross_info)
-                            # logger.info(f"""
-                            #     Recent resistance cross for {ticker} ({timeframe})
-                            #     Time: {candle[0]}
-                            #     Resistance level: {resistance['level']} (from {resistance['timestamp']})
-                            #     Crossing candle OHLC: {candle[1]},{candle[2]},{candle[3]},{candle[4]}
-                            # """.strip())
-                            resistances.remove(resistance)  # Remove crossed resistance
+                            resistances.remove(resistance)
 
                     # Store the analysis results in market_data
                     market_data[ticker][timeframe]['supports'] = supports
@@ -267,45 +267,40 @@ def analyze_support_resistance(timeframes):
     except Exception as e:
         logger.error(f"Error during support/resistance analysis: {e}")
         traceback.print_exc()
-    finally:
-        cursor_db.close()
-        connection.close()
     
     logger.info("Completed support/resistance analysis")
 
-def analyze_price_action(timeframes):
+def analyze_price_action(tickers, timeframes, candles_data):
     """
     Analyzes candle data to identify price action patterns (bullish/bearish continuations)
     between adjacent candles in the newest 4 candles.
+    
+    Args:
+        tickers (list): List of ticker symbols to analyze
+        timeframes (list): List of timeframe strings
+        candles_data (dict): Nested dictionary with structure:
+            {ticker: {timeframe: [(timestamp, o, h, l, c, volume), ...], ...}, ...}
     """
     logger.info("Starting price action analysis")
-    connection = get_db_connection()
-    cursor_db = connection.cursor()
     
     try:
-        active_tickers = get_active_tickers_from_db()
         price_action_data = {}
 
         # Initialize data structure
-        for ticker in active_tickers:
+        for ticker in tickers:
             price_action_data[ticker] = {}
             for timeframe in timeframes:
                 price_action_data[ticker][timeframe] = {
                     'patterns': []
                 }
 
-        for ticker in active_tickers:
+        for ticker in tickers:
             for timeframe in timeframes:
-                # Get newest 4 candles for this ticker and timeframe
-                cursor_db.execute("""
-                    SELECT timestamp, o, h, l, c 
-                    FROM candles 
-                    WHERE ticker = %s AND timeframe = %s 
-                    ORDER BY timestamp DESC
-                    LIMIT 4
-                """, (ticker, timeframe))
-                
-                candles = cursor_db.fetchall()[::-1]  # Reverse to get chronological order
+                if ticker not in candles_data or timeframe not in candles_data[ticker]:
+                    continue
+                    
+                # Get newest 4 candles
+                candles = candles_data[ticker][timeframe][-4:]
                 if len(candles) < 2:  # Need at least 2 candles for analysis
                     continue
 
@@ -361,11 +356,10 @@ def analyze_price_action(timeframes):
     except Exception as e:
         logger.error(f"Error during price action analysis: {e}")
         traceback.print_exc()
-    finally:
-        cursor_db.close()
-        connection.close()
     
     logger.info("Completed price action analysis")
+
+
 
 def print_situations():
 
@@ -531,7 +525,7 @@ def print_downtrend_tickers():
     cursor_db.close()
     connection.close()
 
-def find_trend_crosses():
+def find_trend_crosses(tickers, timeframes, candles_data):
     """
     Finds tickers in long-term trends that recently crossed key levels:
     - Downtrend tickers crossing resistance
@@ -540,8 +534,8 @@ def find_trend_crosses():
     logger.info("\nAnalyzing trend tickers with level crosses...")
     
     # Get analysis data
-    sr_data = analyze_support_resistance()
-    pa_data = analyze_price_action()
+    sr_data = analyze_support_resistance(tickers, timeframes, candles_data)
+    pa_data = analyze_price_action(tickers, timeframes, candles_data)
     
     connection = get_db_connection()
     cursor_db = connection.cursor()
@@ -622,13 +616,13 @@ def find_trend_crosses():
         cursor_db.close()
         connection.close()
 
-def find_aligned_patterns(timeframes):
+def find_aligned_patterns(tickers, timeframes, candles_data):
     """
     Finds tickers that show aligned bullish or bearish patterns across specified timeframes
     in their most recent patterns.
     """
     logger.info("\nAnalyzing tickers for aligned patterns across timeframes...")
-    price_action_data = analyze_price_action(timeframes)
+    price_action_data = analyze_price_action(tickers, timeframes, candles_data)
     
     # Find bullish and bearish alignments
     bull_aligned = []
@@ -662,26 +656,28 @@ def find_aligned_patterns(timeframes):
             })
     
     # Print results
-    if bull_aligned:
-        logger.info(f"\nTickers with bullish alignment across {'/'.join(timeframes)} timeframes:")
-        for entry in bull_aligned:
-            logger.info(f"\n{entry['ticker']}:")
-            for tf in timeframes:
-                pattern = entry['patterns'][tf]
-                logger.info(f"{tf}: {pattern['time_first']} to {pattern['time_second']}")
+    #if bull_aligned:
+    #    logger.info(f"\nTickers with bullish alignment across {'/'.join(timeframes)} timeframes:")
+    #    for entry in bull_aligned:
+    #        logger.info(f"\n{entry['ticker']}:")
+    #        for tf in timeframes:
+    #            pattern = entry['patterns'][tf]
+    #            logger.info(f"{tf}: {pattern['time_first']} to {pattern['time_second']}")
     
-    if bear_aligned:
-        logger.info(f"\nTickers with bearish alignment across {'/'.join(timeframes)} timeframes:")
-        for entry in bear_aligned:
-            logger.info(f"\n{entry['ticker']}:")
-            for tf in timeframes:
-                pattern = entry['patterns'][tf]
-                logger.info(f"{tf}: {pattern['time_first']} to {pattern['time_second']}")
+    #if bear_aligned:
+    #    logger.info(f"\nTickers with bearish alignment across {'/'.join(timeframes)} timeframes:")
+    #    for entry in bear_aligned:
+    #        logger.info(f"\n{entry['ticker']}:")
+    #        for tf in timeframes:
+    #            pattern = entry['patterns'][tf]
+    #            logger.info(f"{tf}: {pattern['time_first']} to {pattern['time_second']}")
 
     if not (bull_aligned or bear_aligned):
         logger.info("No tickers found with aligned patterns across timeframes.")
 
-def find_pattern_sequence():
+    return [bull_aligned, bear_aligned]
+
+def find_pattern_sequence(tickers, timeframes, candles_data):
     """
     Finds tickers with specific sequences of events in all timeframes:
     - Bullish sequence: HT support cross -> LT support cross -> LT bullish pattern
@@ -690,8 +686,8 @@ def find_pattern_sequence():
     logger.info("\nAnalyzing pattern sequences...")
     
     # Get analysis data
-    sr_data = analyze_support_resistance()
-    pa_data = analyze_price_action()
+    sr_data = analyze_support_resistance(tickers, timeframes, candles_data)
+    pa_data = analyze_price_action(tickers, timeframes, candles_data)
     
     # Define all timeframe pairs (HT, LT)
     timeframe_pairs = [
@@ -779,7 +775,7 @@ def find_pattern_sequence():
         if not (bullish_matches or bearish_matches):
             logger.info(f"No tickers found matching the sequence criteria for {HT}/{LT} timeframes.")
 
-def find_single_timeframe_sequences(timeframes):
+def find_single_timeframe_sequences(tickers, timeframes, candles_data):
     """
     Finds tickers with specific sequences of events within each timeframe:
     - Bullish sequences: 
@@ -807,8 +803,8 @@ def find_single_timeframe_sequences(timeframes):
             all_timeframes.add(timeframe_map[tf])
     
     # Get analysis data with all required timeframes
-    sr_data = analyze_support_resistance(list(all_timeframes))
-    pa_data = analyze_price_action(list(all_timeframes))
+    sr_data = analyze_support_resistance(tickers, list(all_timeframes), candles_data)
+    pa_data = analyze_price_action(tickers, list(all_timeframes), candles_data)
 
     # Lists to store matches across all timeframes
     bullish_matches_cs = [] 
@@ -966,21 +962,298 @@ def find_single_timeframe_sequences(timeframes):
     if not (bullish_matches_cs or bullish_matches_sc or bearish_matches_cr or bearish_matches_rc):
         logger.info("No tickers found matching any sequence criteria across all timeframes.")
 
+
+def find_aligned_with_crosses(tickers, timeframes, candles_data):
+    """
+    Checks aligned patterns for M/W timeframes and finds matching crosses in W/D timeframes.
+    Returns tickers where patterns and crosses align.
+    """
+    logger.info("\nAnalyzing aligned patterns with crosses...")
+    
+    # Get aligned patterns
+    main_timeframes = ['W', 'D']
+    results = find_aligned_patterns(tickers, main_timeframes, candles_data)
+    bull_aligned = results[0]
+    bear_aligned = results[1]
+    
+    # Get support/resistance data
+    sr_data = analyze_support_resistance(tickers, ['D', '240'], candles_data)
+    
+    bullish_matches = []
+    bearish_matches = []
+    
+    # Check bull aligned tickers for support crosses
+    if bull_aligned:
+        for entry in bull_aligned:
+            ticker = entry['ticker']
+            
+            # Look for support crosses in W/D timeframes
+            w_crosses = sr_data[ticker]['D']['crosses'] if ticker in sr_data else []
+            d_crosses = sr_data[ticker]['240']['crosses'] if ticker in sr_data else []
+            
+            support_crosses = []
+            
+            # Get support crosses
+            for cross in w_crosses + d_crosses:
+                if cross['type'] == 'support':
+                    support_crosses.append({
+                        'timeframe': cross['timeframe'],
+                        'time': cross['time'],
+                        'level': cross['level']
+                    })
+            
+            if support_crosses:
+                bullish_matches.append({
+                    'ticker': ticker,
+                    'patterns': entry['patterns'],
+                    'crosses': support_crosses
+                })
+    
+    # Check bear aligned tickers for resistance crosses
+    if bear_aligned:
+        for entry in bear_aligned:
+            ticker = entry['ticker']
+            
+            # Look for resistance crosses in W/D timeframes
+            w_crosses = sr_data[ticker]['D']['crosses'] if ticker in sr_data else []
+            d_crosses = sr_data[ticker]['240']['crosses'] if ticker in sr_data else []
+            
+            resistance_crosses = []
+            
+            # Get resistance crosses
+            for cross in w_crosses + d_crosses:
+                if cross['type'] == 'resistance':
+                    resistance_crosses.append({
+                        'timeframe': cross['timeframe'],
+                        'time': cross['time'],
+                        'level': cross['level']
+                    })
+            
+            if resistance_crosses:
+                bearish_matches.append({
+                    'ticker': ticker,
+                    'patterns': entry['patterns'],
+                    'crosses': resistance_crosses
+                })
+    
+    # Log results
+    if bullish_matches:
+        logger.info(f"\nFound {len(bullish_matches)} bullish tickers with M/W pattern alignment and W/D support crosses:")
+        for match in bullish_matches:
+            logger.info(f"\n{match['ticker']}:")
+            logger.info("Patterns:")
+            for tf, pattern in match['patterns'].items():
+                logger.info(f"  {tf}: {pattern['time_first']} to {pattern['time_second']}")
+            logger.info("Support crosses:")
+            for cross in match['crosses']:
+                logger.info(f"  {cross['timeframe']}: {cross['time']} at level {cross['level']}")
+    
+    if bearish_matches:
+        logger.info(f"\nFound {len(bearish_matches)} bearish tickers with M/W pattern alignment and W/D resistance crosses:")
+        for match in bearish_matches:
+            logger.info(f"\n{match['ticker']}:")
+            logger.info("Patterns:")
+            for tf, pattern in match['patterns'].items():
+                logger.info(f"  {tf}: {pattern['time_first']} to {pattern['time_second']}")
+            logger.info("Resistance crosses:")
+            for cross in match['crosses']:
+                logger.info(f"  {cross['timeframe']}: {cross['time']} at level {cross['level']}")
+    
+    return [bullish_matches, bearish_matches]
+
+def find_monthly_crosses(tickers, timeframes, candles_data):
+    """
+    Finds all tickers that have crossed monthly support or resistance levels.
+    """
+    logger.info("\nAnalyzing monthly support/resistance crosses...")
+
+    # Get support/resistance data for monthly timeframe
+    sr_data = analyze_support_resistance(tickers, ['M'], candles_data)
+
+    monthly_support_crosses = []
+    monthly_resistance_crosses = []
+
+    for ticker in sr_data:
+        # Get monthly crosses
+        crosses = sr_data[ticker]['M']['crosses'] if ticker in sr_data else []
+
+        # Separate support and resistance crosses
+        for cross in crosses:
+            if cross['type'] == 'support':
+                monthly_support_crosses.append({
+                    'ticker': ticker,
+                    'time': cross['time'],
+                    'level': cross['level'],
+                    'candle': cross['candle']
+                })
+            elif cross['type'] == 'resistance':
+                monthly_resistance_crosses.append({
+                    'ticker': ticker,
+                    'time': cross['time'],
+                    'level': cross['level'],
+                    'candle': cross['candle']
+                })
+
+    # Log results
+    if monthly_support_crosses:
+        logger.info(f"\nFound {len(monthly_support_crosses)} tickers with monthly support crosses:")
+        for cross in monthly_support_crosses:
+            logger.info(f"\n{cross['ticker']}:")
+            logger.info(f"  Time: {cross['time']}")
+            logger.info(f"  Support level: {cross['level']}")
+            logger.info(f"  Cross candle: O:{cross['candle']['o']} H:{cross['candle']['h']} L:{cross['candle']['l']} C:{cross['candle']['c']}")
+
+    if monthly_resistance_crosses:
+        logger.info(f"\nFound {len(monthly_resistance_crosses)} tickers with monthly resistance crosses:")
+        for cross in monthly_resistance_crosses:
+            logger.info(f"\n{cross['ticker']}:")
+            logger.info(f"  Time: {cross['time']}")
+            logger.info(f"  Resistance level: {cross['level']}")
+            logger.info(f"  Cross candle: O:{cross['candle']['o']} H:{cross['candle']['h']} L:{cross['candle']['l']} C:{cross['candle']['c']}")
+
+    return [monthly_support_crosses, monthly_resistance_crosses]
+
+def analyze_ticker_metrics(tickers, timeframes, candles_data, max_prob):
+    """
+    Analyzes tickers/timeframes for linear regression slope, ATH discount, and SMA200 probability.
+    Gets ATH directly from database monthly highs.
+    Only returns results where:
+    - For negative slope: price must be above SMA200
+    - For positive slope: price must be below SMA200
+    
+    Args:
+        tickers (list): List of ticker symbols
+        timeframes (list): List of timeframe strings
+        candles_data (dict): Nested dictionary with candle data
+    """
+
+    logger.info("\nAnalyzing ticker metrics...")
+    
+    results = []
+    
+    # Get ATH data from database for all tickers
+    connection = get_db_connection()
+    cursor_db = connection.cursor()
+    
+    # Get highest monthly highs for each ticker
+    ath_data = {}
+    try:
+        for ticker in tickers:
+            cursor_db.execute("""
+                SELECT MAX(h) as ath
+                FROM candles 
+                WHERE ticker = %s AND timeframe = 'M'
+            """, (ticker,))
+            result = cursor_db.fetchone()
+            if result and result[0]:
+                ath_data[ticker] = float(result[0])
+    except Exception as e:
+        logger.error(f"Error fetching ATH data: {e}")
+    finally:
+        cursor_db.close()
+        connection.close()
+    
+    for ticker in tickers:
+        for timeframe in timeframes:
+            if ticker not in candles_data or timeframe not in candles_data[ticker]:
+                continue
+                
+            candles = candles_data[ticker][timeframe]
+            if len(candles) < 200:  # Need at least 200 candles for SMA200
+                continue
+            
+            # Extract close prices and convert to numpy array
+            closes = np.array([float(c[4]) for c in candles])
+            
+            # 1. Calculate linear regression slope
+            X = np.arange(len(closes)).reshape(-1, 1)
+            reg = LinearRegression().fit(X, closes)
+            slope = reg.coef_[0]
+            
+            # Calculate slope as percent change over 200 candles
+            slope_percent = (slope * 200 / closes[0]) * 100
+            
+            # 2. Calculate ATH discount using database ATH
+            current_price = closes[-1]
+            if ticker in ath_data:
+                ath = ath_data[ticker]
+                ath_discount = ((ath - current_price) / ath) * 100
+            else:
+                logger.warning(f"No ATH data available for {ticker}, using timeframe highs")
+                ath = np.max(closes)
+                ath_discount = ((ath - current_price) / ath) * 100
+            
+            # 3. Calculate SMA200
+            sma200 = np.convolve(closes, np.ones(200)/200, mode='valid')
+            current_sma = sma200[-1]
+            diffs = closes[199:] - sma200  # Differences between price and SMA200
+            
+            # Calculate mean and std of historical diffs for normal distribution
+            diff_mean = np.mean(diffs[:-1])  # Exclude latest diff
+            diff_std = np.std(diffs[:-1])
+            
+            # Calculate probability of latest diff
+            latest_diff = diffs[-1]
+            if diff_std != 0:
+                z_score = (latest_diff - diff_mean) / diff_std
+                probability = stats.norm.cdf(z_score) * 100
+            else:
+                probability = 50  # Default to 50% if std is 0
+
+            # Only add results that meet the slope/price conditions
+            if ((slope_percent < 0 and current_price > current_sma) or \
+               (slope_percent > 0 and current_price < current_sma)) and \
+               abs(probability) <= max_prob:
+                results.append({
+                    'ticker': ticker,
+                    'timeframe': timeframe,
+                    'slope_percent': slope_percent,
+                    'ath_discount': ath_discount,
+                    'sma_probability': probability,
+                    'current_price': current_price,
+                    'current_sma': current_sma,
+                    'ath': ath
+                })
+    
+    # Sort by SMA probability descending
+    results.sort(key=lambda x: x['sma_probability'], reverse=True)
+    
+    # Print results
+    logger.info("\nResults sorted by SMA200 probability (highest to lowest):")
+    for r in results:
+        logger.info(f"\n{r['ticker']} ({r['timeframe']}):")
+        logger.info(f"  Price: {r['current_price']:.4f}")
+        logger.info(f"  SMA200: {r['current_sma']:.4f}") 
+        logger.info(f"  ATH: {r['ath']:.4f}")
+        logger.info(f"  200-candle slope: {r['slope_percent']:.2f}%")
+        logger.info(f"  ATH discount: {r['ath_discount']:.2f}%")
+        logger.info(f"  SMA200 probability: {r['sma_probability']:.2f}%")
+
 # --------------------------
 # Main Scheduler Setup
 # --------------------------
 def main():
 
-    timeframes = ['M', 'W', 'D', '240', '60', '15']
+    timeframes = ['W', 'D', '240', '60', '15']
+    tickers = get_active_tickers_from_db()
+    #tickers = ['BNBUSDT']
+    candle_data = get_candles_data(tickers, timeframes)
+    
     #timeframes = ['D', '240', '60', '15']
     #timeframes = ['15']
     #print_situations()
     #print_downtrend_tickers()
-    #find_trend_crosses()
+    #find_trend_crosses(tickers, timeframes, candle_data)
     #find_aligned_patterns()
-    #find_pattern_sequence()
+    #find_pattern_sequence(tickers, timeframes, candle_data)
 
-    find_single_timeframe_sequences(timeframes)
+    #find_single_timeframe_sequences(tickers, timeframes, candle_data)
+
+    #find_monthly_crosses(tickers, timeframes, candle_data)
+
+    #find_aligned_with_crosses(tickers, timeframes, candle_data)
+
+    analyze_ticker_metrics(tickers, timeframes, candle_data, 2.0)
 
 # --------------------------
 # Script Entry Point

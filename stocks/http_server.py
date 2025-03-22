@@ -2208,6 +2208,26 @@ def run_all_jobs_parallel():
             except Exception as e:
                 print(f"Job raised an exception: {e}")
 
+@app.route('/api/query', methods=['POST'])
+def execute_query():
+    # Expect a JSON payload with a "query" field
+    req_data = request.get_json()
+    sql = req_data.get("query", "").strip()
+    if not sql:
+        return {"error": "Query parameter missing."}, 400
+
+    try:
+        connection = DB.get_connection_mysql()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute(sql)
+        # Fetch all rows as a list of dictionaries
+        rows = cursor.fetchall()
+        connection.commit()
+        return {"data": rows}
+    except Exception as e:
+        logger.error("execute_query error: " + str(e))
+        return {"error": str(e)}, 500
+
 if __name__ == "__main__":
     
     #tickerList = get_tickers_download()
@@ -2269,7 +2289,7 @@ if __name__ == "__main__":
         #download_fundamental_statements()
         
         #calc_valuation_ratios_stocks()
-        calculate_price_discount()
+        #calculate_price_discount()
         #estimate_growth_stocks()
         #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
         #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
@@ -2288,6 +2308,7 @@ if __name__ == "__main__":
         #rank_stocks()
         #calc_valuation_ratios_stocks()
         #valuate_stocks()
+        pass
 
     #run_all_jobs_parallel()
 

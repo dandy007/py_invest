@@ -25,14 +25,21 @@ from tenacity import retry, wait_exponential, stop_after_attempt
 import os
 import zipfile
 from logging.handlers import RotatingFileHandler
+from dotenv import load_dotenv
 
 # --------------------------
 # Database Configuration
 # --------------------------
-DB_HOST = '192.168.2.168'
-DB_DATABASE = 'invest'
-DB_USER = 'root'       # <<== Replace with your DB username
-DB_PASSWORD = 'dandy'   # <<== Replace with your DB password
+
+load_dotenv()
+
+DB_HOST = os.getenv('DB_HOST')
+DB_DATABASE = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+
+if not all([DB_USER, DB_PASSWORD]):
+    raise ValueError("Database credentials not found in .env file")
 
 # --------------------------
 # Logging Configuration
@@ -182,7 +189,7 @@ def safe_fetch_kline(session, symbol, timeframe):
     response = session.get_kline(
         symbol=symbol,
         interval=timeframe,
-        limit=101
+        limit=1001
     )
     if 'ret_code' in response and response['ret_code'] == 10006:
         raise Exception("Rate limit exceeded")
@@ -190,35 +197,71 @@ def safe_fetch_kline(session, symbol, timeframe):
 
 def process_candles(data, connection, timeframe):
     """
-    Process and store candle data for a single symbol
+    Process and store candle data for a single symbol, only processing candles newer than the last stored one
     """
     cursor_db = connection.cursor()
     try:
         ticker = data['result']['symbol']
         candles = data['result']['list']
+
+        # Get the timestamp of the last stored candle
+        cursor_db.execute(
+            "SELECT MAX(timestamp) FROM candles WHERE ticker = %s AND timeframe = %s",
+            (ticker, timeframe)
+        )
+        last_timestamp = cursor_db.fetchone()[0]
         
+        # First set all candles for this ticker and timeframe as finished
+        cursor_db.execute(
+            "UPDATE candles SET finished = 1 WHERE ticker = %s AND timeframe = %s",
+            (ticker, timeframe)
+        )
+
         for candle in candles:
             timestamp_ms = int(candle[0])
             timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+            
+            # Skip if this candle is older than the last stored one
+            if last_timestamp:
+                if not last_timestamp.tzinfo:
+                    last_timestamp = last_timestamp.replace(tzinfo=timezone.utc)
+                if timestamp_dt < last_timestamp:
+                    continue
+                
             o, h, l, c, volume = float(candle[1]), float(candle[2]), float(candle[3]), float(candle[4]), float(candle[5])
-
+            
             # Check if candle exists
             cursor_db.execute(
                 "SELECT COUNT(*) FROM candles WHERE ticker = %s AND timestamp = %s AND timeframe = %s",
                 (ticker, timestamp_dt, timeframe)
             )
             if cursor_db.fetchone()[0] > 0:
-                continue
+                # Update existing candle
+                update_sql = """
+                    UPDATE candles 
+                    SET o = %s, h = %s, l = %s, c = %s, volume = %s
+                    WHERE ticker = %s AND timestamp = %s AND timeframe = %s
+                """
+                cursor_db.execute(update_sql, (o, h, l, c, volume, ticker, timestamp_dt, timeframe))
+            else:
+                # Insert new candle
+                insert_sql = """
+                    INSERT INTO candles (ticker, timestamp, timeframe, o, h, l, c, volume, finished)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1)
+                """
+                cursor_db.execute(insert_sql, (ticker, timestamp_dt, timeframe, o, h, l, c, volume))
 
-            # Insert candle
-            insert_sql = """
-                INSERT INTO candles (ticker, timestamp, timeframe, o, h, l, c, volume)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor_db.execute(insert_sql, (ticker, timestamp_dt, timeframe, o, h, l, c, volume))
+        # Set the last candle as unfinished
+        if candles:
+            last_timestamp_ms = int(candles[0][0])
+            last_timestamp_dt = datetime.fromtimestamp(last_timestamp_ms / 1000, tz=timezone.utc)
+            cursor_db.execute(
+                "UPDATE candles SET finished = 0 WHERE ticker = %s AND timeframe = %s AND timestamp = %s",
+                (ticker, timeframe, last_timestamp_dt)
+            )
         
         connection.commit()
-        logger.info(f"Inserted candles for {ticker} on timeframe {timeframe}")
+        logger.info(f"Processed candles for {ticker} on timeframe {timeframe}")
     except Exception as e:
         logger.error(f"Error processing candles for {ticker}: {e}")
     finally:
@@ -264,7 +307,7 @@ def sync_candles(timeframe):
 
 def cleanup_old_candles():
     """
-    Cleans up the candles table by retaining only the last 100 candles for each ticker and timeframe.
+    Cleans up the candles table by retaining only the last 1000 candles for each ticker and timeframe.
     """
     connection = get_db_connection()
     cursor_db = connection.cursor()
@@ -274,7 +317,7 @@ def cleanup_old_candles():
         ticker_timeframes = cursor_db.fetchall()
 
         for ticker, timeframe in ticker_timeframes:
-            # Delete candles older than the 100 most recent ones for each ticker and timeframe
+            # Delete candles older than the 1000 most recent ones for each ticker and timeframe
             cursor_db.execute(
                 """
                 DELETE FROM candles
@@ -283,14 +326,14 @@ def cleanup_old_candles():
                         SELECT timestamp FROM candles
                         WHERE ticker = %s AND timeframe = %s
                         ORDER BY timestamp DESC
-                        LIMIT 100
+                        LIMIT 1000
                     ) AS subquery
                 )
                 """,
                 (ticker, timeframe, ticker, timeframe)
             )
         connection.commit()
-        logger.info("Cleaned up old candles, retaining only the last 100 candles for each ticker and timeframe.")
+        logger.info("Cleaned up old candles, retaining only the last 1000 candles for each ticker and timeframe.")
     except Exception as e:
         logger.error(f"Error cleaning up old candles: {e}")
     finally:
@@ -337,6 +380,8 @@ def main():
     scheduler.add_job(sync_candles, 'cron', args=['240'], hour='1/4', minute=1, id='sync_240')  # 4-hour candles
     scheduler.add_job(sync_candles, 'cron', args=['60'], hour='0/1', minute=1, id='sync_60')  # 1-hour candles
     scheduler.add_job(sync_candles, 'cron', args=['15'], minute='0/15', second=10, id='sync_15')  # 15-min candles
+
+    sync_candles('60')  # Run daily candles immediately on startup
 
     logger.info("Scheduler started. Running tasks 24/7.")
     try:
