@@ -35,6 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools import add_constant
 import traceback
+import re
 
 
 
@@ -860,6 +861,7 @@ def downloadStockOptionData(input_ticker_id_list=None):
         
         #skip = True
         ticker_list = dao_tickers.select_tickers_all__limited_usa_ids()
+        #ticker_list = ['MSFT']
         if (input_ticker_id_list != None):
             ticker_list = input_ticker_id_list
         counter = 0
@@ -880,27 +882,29 @@ def downloadStockOptionData(input_ticker_id_list=None):
                     logger.warning(f"Download Stock: Skipping {ticker_id}")
                     continue
 
-                options = stock.options
+                options_expirations = stock.options
                 today = datetime.today().date()
                 one_year_from_now = (today + timedelta(days=365)).strftime("%Y-%m-%d")
                 one_month_from_now = (today + timedelta(days=30)).strftime("%Y-%m-%d")
 
                 month_done = False
-                for option in options:
-                    if month_done == False and (option > one_month_from_now):
+                for option_expiration in options_expirations:
+
+                    chain = stock.option_chain(option_expiration)
+                    storeOptionData(ticker_id, chain)
+
+                    if month_done == False and (option_expiration > one_month_from_now):
                         #print("one month")
-                        chain = stock.option_chain(option)
-                        future_price = get_option_growth_data(chain, option)
+                        future_price = get_option_growth_data(chain, option_expiration)
                         if future_price != None:
                             dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPTION_MONTH_AVG_PRICE, future_price, today)
                             #print(future_price)
                         month_done = True
                         continue
                         
-                    if (option > one_year_from_now):
+                    if (option_expiration > one_year_from_now):
                         #print("one year")
-                        chain = stock.option_chain(option)
-                        future_price = get_option_growth_data(chain, option)
+                        future_price = get_option_growth_data(chain, option_expiration)
                         if future_price != None:
                             if price not in (0, None):
                                 year_discount = (future_price - price) / price
@@ -912,6 +916,12 @@ def downloadStockOptionData(input_ticker_id_list=None):
                             #print(future_price)
                         break
 
+                conn = DB.get_connection_mysql()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM options WHERE expiration < CURDATE()")
+                conn.commit()
+                cursor.close()
+                conn.close()
                 logger.info(f"Download Stock: Updated {ticker_id}")
 
             except Exception as err:
@@ -921,7 +931,112 @@ def downloadStockOptionData(input_ticker_id_list=None):
         logger.error(f"downloadStockOptionData - Error {e}")
         traceback.print_exc()
     logger.info(f"downloadStockOptionData - End")
-           
+
+def storeOptionData(ticker_id, chain):
+    # Get a database connection and create a cursor
+    connection = DB.get_connection_mysql()
+    cursor = connection.cursor()
+
+    # Prepare the SQL insert statement with "ON DUPLICATE KEY UPDATE"
+    sql = """
+        INSERT INTO options (
+            ticker_id, option_id, expiration, strike, last_trade_date,
+            last_price, bid, ask, `change`, volume, oi, iv, type
+        ) VALUES (
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s
+        )
+        ON DUPLICATE KEY UPDATE
+            last_price = VALUES(last_price),
+            bid = VALUES(bid),
+            ask = VALUES(ask),
+            `change` = VALUES(`change`),
+            volume = VALUES(volume),
+            oi = VALUES(oi),
+            iv = VALUES(iv)
+    """
+
+    # Helper to extract and insert a row for a given option type
+    def process_options(df, opt_type):
+        # If chain expiration is available (from the chain), use it.
+        # Otherwise, you may need to extract the expiration date from the option row.
+
+        # Iterate over each row in the DataFrame
+        for idx, row in df.iterrows():
+            # Use the contract symbol as the option ID.
+            option_id = row.get('contractSymbol')
+            # Convert lastTradeDate (timestamp) to date if needed.
+            last_trade = row.get('lastTradeDate')
+            last_trade_date = last_trade.date() if last_trade else None
+
+            match = re.search(r'(\d{6})', option_id)
+            if match:
+                date_str = match.group(1)
+                expiration_date = datetime.strptime(date_str, "%y%m%d").date()
+            else:
+                expiration_date = None
+
+            strike = row.get('strike')
+            if strike is None or (isinstance(strike, float) and math.isnan(strike)):
+                strike = 0
+            last_price = row.get('lastPrice')
+            if last_price is None or (isinstance(last_price, float) and math.isnan(last_price)):
+                last_price = 0
+            bid = row.get('bid')
+            if bid is None or (isinstance(bid, float) and math.isnan(bid)):
+                bid = 0
+            ask = row.get('ask')
+            if ask is None or (isinstance(ask, float) and math.isnan(ask)):
+                ask = 0
+            # Re-fetch last_price for change calculation
+            last_price = row.get('lastPrice')
+            if last_price is None or (isinstance(last_price, float) and math.isnan(last_price)):
+                last_price = 0
+            change = row.get('change')
+            if change is None or (isinstance(change, float) and math.isnan(change)):
+                change = 0
+            else:
+                change = (change / last_price) * 100 if last_price not in (None, 0) else 0
+            vol_val = row.get('volume')
+            volume = int(vol_val) if (vol_val is not None and not (isinstance(vol_val, float) and math.isnan(vol_val))) else 0
+            oi_val = row.get('openInterest')
+            oi = int(oi_val) if (oi_val is not None and not (isinstance(oi_val, float) and math.isnan(oi_val))) else 0
+            iv = row.get('impliedVolatility')
+            if iv is None or (isinstance(iv, float) and math.isnan(iv)):
+                iv = 0
+
+            values = (
+                ticker_id,
+                option_id,
+                expiration_date,
+                strike,
+                last_trade_date,
+                last_price,
+                bid,
+                ask,
+                change,
+                volume,
+                oi,
+                iv,
+                opt_type
+            )
+            try:
+                cursor.execute(sql, values)
+                connection.commit()
+            except Exception as e:
+                # Log any error if needed
+                print(f"Error inserting option {option_id}: {e}")
+
+    # Process calls ('C') and puts ('P')
+    if hasattr(chain, "calls") and not chain.calls.empty:
+        process_options(chain.calls, 'C')
+    if hasattr(chain, "puts") and not chain.puts.empty:
+        process_options(chain.puts, 'P')
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
 def rank_stocks():
     logger.info("Rank Stocks Job started.")
     connection = DB.get_connection_mysql()
@@ -2301,7 +2416,7 @@ if __name__ == "__main__":
 
         #update_ticker_target_price()
         #update_stock_recommendations()
-        #downloadStockOptionData()
+        downloadStockOptionData()
 
         #update_dividends_info() - asi neni treba
         #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS)
