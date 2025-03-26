@@ -2343,6 +2343,146 @@ def execute_query():
         logger.error("execute_query error: " + str(e))
         return {"error": str(e)}, 500
 
+def analyze_option_sentiment(input_ticker_id_list=None, days=14, max_days_to_expiration=365, log_results=False):
+    # Connect to the database
+
+    conn = DB.get_connection_mysql()
+    cursor = conn.cursor(dictionary=True)
+
+    query = "SELECT ticker_id, price FROM tickers"
+    if input_ticker_id_list:
+        placeholders = ", ".join(["%s"] * len(input_ticker_id_list))
+        query += " WHERE ticker_id IN (" + placeholders + ")"
+        cursor.execute(query, tuple(input_ticker_id_list))
+    else:
+        cursor.execute(query)
+    tickers_data = cursor.fetchall()
+
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=days + 1)
+    max_expiration = end_date + timedelta(days=max_days_to_expiration)
+
+    for row in tickers_data:
+        ticker = row['ticker_id']
+        current_price = row['price']
+        sentiments = []
+        total_options_count = 0
+        total_weight = 0
+
+        for opt_type in ['P', 'C']:
+            # Load option data (put or call)
+            cursor.execute("""
+                SELECT last_trade_date, option_id, last_price, oi, volume, strike, expiration
+                FROM options
+                WHERE ticker_id = %s AND type = %s AND last_trade_date BETWEEN %s AND %s AND expiration <= %s
+                ORDER BY option_id, last_trade_date
+            """, (ticker, opt_type, start_date, end_date, max_expiration))
+            options = pd.DataFrame(cursor.fetchall())
+
+            if options.empty or len(options.option_id.unique()) == 0:
+                continue
+
+            # Filter strikes: within ±10% range but at least 3 below and 3 above current price
+            strikes_sorted = sorted(options['strike'].unique())
+            lower_limit = current_price * 0.9
+            upper_limit = current_price * 1.1
+            near_strikes = [s for s in strikes_sorted if lower_limit <= s <= upper_limit]
+
+            if len(near_strikes) < 6:
+                continue  # not enough strikes
+
+            center_idx = min(range(len(near_strikes)), key=lambda i: abs(near_strikes[i] - current_price))
+            selected_strikes = near_strikes[max(0, center_idx - 3): center_idx + 4]
+            options = options[options['strike'].isin(selected_strikes)]
+
+            # Load historical stock prices from tickers_time_data (type = 103)
+            cursor.execute("""
+                SELECT date AS last_trade_date, value AS stock_price
+                FROM tickers_time_data
+                WHERE ticker_id = %s AND type = 103 AND date BETWEEN %s AND %s
+            """, (ticker, start_date, end_date))
+            stock_data = pd.DataFrame(cursor.fetchall())
+
+            if stock_data.empty:
+                continue
+
+            # Merge options with stock prices
+            merged = options.merge(stock_data, on="last_trade_date", how="left")
+
+            for option_id in merged['option_id'].unique():
+                df = merged[merged['option_id'] == option_id].sort_values("last_trade_date")
+                if len(df) < 2:
+                    continue
+
+                prev, curr = df.iloc[-2], df.iloc[-1]
+
+                delta_price = curr['last_price'] - prev['last_price']
+                delta_oi = curr['oi'] - prev['oi']
+                delta_stock = curr['stock_price'] - prev['stock_price']
+                delta_volume = curr['volume'] - prev['volume']
+
+                pct_price = abs(delta_price) / prev['last_price'] if prev['last_price'] else 0
+                pct_oi = abs(delta_oi) / prev['oi'] if prev['oi'] else 0
+                pct_stock = abs(delta_stock) / prev['stock_price'] if prev['stock_price'] else 0
+                pct_volume = abs(delta_volume) / prev['volume'] if prev['volume'] else 0
+
+                # Scoring based on percentage changes (hedge-style thresholds)
+                strength = 1
+                if pct_price > 0.15: strength += 1
+                if pct_oi > 0.2: strength += 1
+                if pct_stock > 0.01: strength += 1
+                if pct_volume > 1.0: strength += 1
+                if strength > 5: strength = 5
+
+                # Sentiment classification logic with volume trend
+                if opt_type == 'P':
+                    if delta_price > 0 and delta_oi > 0 and delta_stock < 0 and delta_volume > 0:
+                        sentiment = 0  # Bearish
+                    elif delta_price < 0 and delta_oi > 0 and delta_stock > 0 and delta_volume > 0:
+                        sentiment = 1  # Bullish
+                    elif delta_price < 0 and delta_oi < 0 and delta_stock > 0 and delta_volume < 0:
+                        sentiment = 1  # Bullish
+                    elif delta_price > 0 and delta_oi < 0 and delta_stock < 0 and delta_volume < 0:
+                        sentiment = 0  # Bearish
+                    else:
+                        continue
+                elif opt_type == 'C':
+                    if delta_price > 0 and delta_oi > 0 and delta_stock > 0 and delta_volume > 0:
+                        sentiment = 1  # Bullish
+                    elif delta_price < 0 and delta_oi > 0 and delta_stock < 0 and delta_volume > 0:
+                        sentiment = 0  # Bearish
+                    elif delta_price < 0 and delta_oi < 0 and delta_stock < 0 and delta_volume < 0:
+                        sentiment = 0  # Bearish
+                    elif delta_price > 0 and delta_oi < 0 and delta_stock > 0 and delta_volume < 0:
+                        sentiment = 1  # Bullish
+                    else:
+                        continue
+
+                weight = curr['oi']
+                sentiments.append((sentiment, strength, weight))
+                total_options_count += 1
+                total_weight += weight
+
+        if sentiments:
+            df_sent = pd.DataFrame(sentiments, columns=["sentiment", "strength", "weight"])
+            dominant = df_sent.groupby("sentiment").apply(lambda g: (g["strength"] * g["weight"]).sum() / g["weight"].sum()).sort_values(ascending=False)
+            top = int(dominant.index[0])
+            avg_strength = int(round(dominant.iloc[0]))
+
+            cursor.execute("""
+                UPDATE tickers
+                SET option_sentiment = %s,
+                    option_sentiment_strength = %s
+                WHERE ticker_id = %s
+            """, (top, avg_strength, ticker))
+            conn.commit()
+
+            if log_results:
+                print(f"{ticker}: sentiment={top}, strength={avg_strength}, options={total_options_count}, total_weight={total_weight:.2f}")
+
+    cursor.close()
+    conn.close()
+
 if __name__ == "__main__":
     
     #tickerList = get_tickers_download()
@@ -2385,6 +2525,7 @@ if __name__ == "__main__":
         scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
         scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS])
         scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
+        scheduler.add_job(analyze_option_sentiment, 'cron', day_of_week='tue-sat', hour=12, minute=30)
 
         scheduler.add_job(calc_ratio_discounts, 'cron',day_of_week='tue-sat', hour=12, minute=30)
 
@@ -2416,7 +2557,8 @@ if __name__ == "__main__":
 
         #update_ticker_target_price()
         #update_stock_recommendations()
-        downloadStockOptionData()
+        #downloadStockOptionData()
+        analyze_option_sentiment(input_ticker_id_list=None, log_results=True)
 
         #update_dividends_info() - asi neni treba
         #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS)
