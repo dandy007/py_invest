@@ -37,8 +37,6 @@ from statsmodels.tools import add_constant
 import traceback
 import re
 
-
-
 # Load environment variables from .env file
 load_dotenv()
 
@@ -861,7 +859,8 @@ def downloadStockOptionData(input_ticker_id_list=None):
         
         #skip = True
         ticker_list = dao_tickers.select_tickers_all__limited_usa_ids()
-        #ticker_list = ['MSFT']
+        ticker_list.append('SPY')
+        #ticker_list = ['SPY']
         if (input_ticker_id_list != None):
             ticker_list = input_ticker_id_list
         counter = 0
@@ -916,12 +915,12 @@ def downloadStockOptionData(input_ticker_id_list=None):
                             #print(future_price)
                         break
 
-                conn = DB.get_connection_mysql()
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM options WHERE expiration < CURDATE()")
-                conn.commit()
-                cursor.close()
-                conn.close()
+                #conn = DB.get_connection_mysql()
+                #cursor = conn.cursor()
+                #cursor.execute("DELETE FROM options WHERE expiration < CURDATE()")
+                #conn.commit()
+                #cursor.close()
+                #conn.close()
                 logger.info(f"Download Stock: Updated {ticker_id}")
 
             except Exception as err:
@@ -2485,19 +2484,6 @@ def analyze_option_sentiment(input_ticker_id_list=None, days=14, max_days_to_exp
 
 if __name__ == "__main__":
     
-    #tickerList = get_tickers_download()
-    #for row in tickerList:
-    #    print(f"Ticker: {row}")
-    #self.scheduler = BackgroundScheduler()
-    #scheduler.add_job(my_task, 'interval', seconds=10)
-
-    #cron
-    #minute='*/5': Execute the task every 5 minutes
-    #hour='0-23/2': Execute the task every 2 hours (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22)
-    #day='*/2': Execute the task every other day
-    #month='*': Execute the task every month
-    #day_of_week='mon-fri': Execute the task only on weekdays
-
     DEV_MODE = os.getenv('DEV_MODE').lower() == "true"
 
     #scheduler.add_job(notify_earnings, 'cron', second='*/10')
@@ -2533,49 +2519,8 @@ if __name__ == "__main__":
         logger.info("Schedulers started v2.")
     
     if DEV_MODE == True:
-        #sync_ticker_id_list()
-        #update_ticker_profile(True)
-        #update_earnings_calendar()
-        
-        #download_prices()
-        #update_ticker_target_price()
-        #update_stock_recommendations()
-        #update_stock_predictions()
-        #downloadStockOptionData()
-        #download_fundamental_statements()
-        
-        #calc_valuation_ratios_stocks()
-        #calculate_price_discount()
-        #estimate_growth_stocks()
-        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
-        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
-        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
-        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
-        #calc_valuation_stocks()
-        #calc_ratio_discounts()
-        #calc_seasonality()
-
-        #update_ticker_target_price()
-        #update_stock_recommendations()
-        #downloadStockOptionData()
-        analyze_option_sentiment(input_ticker_id_list=None, log_results=True)
-
-        #update_dividends_info() - asi neni treba
-        #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS, TICKERS_TIME_DATA__TYPE__CONST.METRIC_SHARES__CONTINOUS)
-        #rank_stocks()
-        #calc_valuation_ratios_stocks()
-        #valuate_stocks()
         pass
 
     #run_all_jobs_parallel()
 
     app.run(debug=False,host='0.0.0.0')
-    
-
-
-
-
-
-#with socketserver.TCPServer(("", PORT), Handler) as httpd:
-#    print(f"Serving at port {PORT}")
-#    httpd.serve_forever()
