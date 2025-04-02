@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    // ... ostatní volby
+    "baseUrl": ".", // Nebo "./"
+    "paths": {
+      // TOTO JE DŮLEŽITÉ: @/* mapuje na src/*
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

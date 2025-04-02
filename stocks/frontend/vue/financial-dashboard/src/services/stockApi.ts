@@ -1,0 +1,25 @@
+import axios from 'axios';
+import type { StockData } from '@/types/stock';
+
+const API_BASE_URL = 'http://localhost:5000'; // Configure base URL
+
+export async function fetchStockDataById(tickerId: string): Promise<StockData> {
+  if (!tickerId) {
+    throw new Error('Ticker ID cannot be empty');
+  }
+  try {
+    const response = await axios.get<StockData>(`${API_BASE_URL}/stock/${tickerId}`);
+    // Basic validation (can be more thorough)
+    if (!response.data || !response.data.TICKER) {
+        throw new Error('Invalid data received from API');
+    }
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching stock data for ${tickerId}:`, error);
+    if (axios.isAxiosError(error)) {
+      throw new Error(`API Error: ${error.response?.statusText || error.message}`);
+    } else {
+      throw new Error(`An unexpected error occurred: ${error}`);
+    }
+  }
+}

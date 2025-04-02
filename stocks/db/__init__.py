@@ -9,3 +9,4 @@ from stocks.db.row_portfolios import ROW_Portfolios
 from stocks.db.dao_portfolios import DAO_Portfolios
 from stocks.db.row_portfolio_positions import ROW_PortfolioPositions
 from stocks.db.dao_portfolio_positions import DAO_PortfolioPositions
+from stocks.api.api import fastApiApp

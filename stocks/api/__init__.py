@@ -1,0 +1,1 @@
+from stocks.api.api import fastApiApp
