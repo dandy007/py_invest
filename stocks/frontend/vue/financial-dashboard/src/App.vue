@@ -1,26 +1,31 @@
 <template>
   <div id="app-container">
     <header>
-      <h1>Stock Dashboard</h1>
+      <h1>Financial Dashboard</h1>
     </header>
-    <main>
-      <StockDashboard />
-    </main>
+    <div class="layout">
+      <nav class="sidebar">
+        <router-link to="/stocks" class="nav-item">Stock Info</router-link>
+        <router-link to="/options" class="nav-item">Option Info</router-link>
+      </nav>
+      <main>
+        <router-view />
+      </main>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import StockDashboard from './views/StockDashboard.vue';
+// Router view will handle component rendering
 </script>
 
 <style>
-/* Import base styles or define global styles here */
-@import '@/assets/base.css'; /* If you have global styles */
+@import '@/assets/base.css';
 
 #app-container {
-  max-width: 1600px; /* Max width for the dashboard */
-  margin: 0 auto;   /* Center the container */
-  padding: 0 15px; /* Padding on the sides */
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 15px;
 }
 
 header {
@@ -36,7 +41,39 @@ header h1 {
   font-size: 1.5em;
 }
 
+.layout {
+  display: flex;
+  gap: 20px;
+}
+
+.sidebar {
+  width: 200px;
+  background: white;
+  padding: 20px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  height: fit-content;
+}
+
+.nav-item {
+  display: block;
+  padding: 10px 15px;
+  color: #333;
+  text-decoration: none;
+  border-radius: 5px;
+  margin-bottom: 5px;
+}
+
+.nav-item:hover {
+  background-color: #f0f2f5;
+}
+
+.router-link-active {
+  background-color: #e2e8f0;
+  font-weight: 500;
+}
+
 main {
-  /* Styles for the main content area */
+  flex: 1;
 }
 </style>

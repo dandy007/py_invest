@@ -46,13 +46,22 @@ export interface StockData {
 
 // Typ pro Plotly trace object (může být rozšířen podle potřeby)
 export interface PlotlyTrace {
-  x: string[];
-  y: (number | null)[]; // Povolíme null pro případné chybějící hodnoty
+  x: (string | number)[] | [number, number];
+  y: (number | null)[];
   type: string;
   mode?: string;
   name?: string;
-  marker?: { color?: string };
-  line?: { color?: string };
+  marker?: {
+    color?: string;
+    line?: {
+      color?: string;
+      width?: number;
+    }
+  };
+  line?: {
+    color?: string;
+    width?: number;
+  };
   yaxis?: string; // Pro případné více os y
   // ... další Plotly atributy
 }

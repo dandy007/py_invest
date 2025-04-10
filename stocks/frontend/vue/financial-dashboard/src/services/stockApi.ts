@@ -23,3 +23,21 @@ export async function fetchStockDataById(tickerId: string): Promise<StockData> {
     }
   }
 }
+
+export interface CurrentPriceResponse {
+  price: number;
+  timestamp: string;
+}
+
+export async function getCurrentPrice(tickerId: string): Promise<CurrentPriceResponse> {
+  try {
+    const stockData = await fetchStockDataById(tickerId);
+    return {
+      price: stockData.CURRENT_PRICE || 0,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error(`Error getting current price for ${tickerId}:`, error);
+    throw error;
+  }
+}

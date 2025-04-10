@@ -1,5 +1,9 @@
 {
   "devDependencies": {
     "@babel/eslint-parser": "^7.26.10"
+  },
+  "dependencies": {
+    "pinia": "^3.0.2",
+    "vue-router": "^4.5.0"
   }
 }

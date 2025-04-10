@@ -103,6 +103,7 @@
   
   <script setup lang="ts">
   import { ref, onMounted, computed, watch } from 'vue';
+  import { useTickerStore } from '@/stores/tickerStore';
   import TickerInput from '@/components/TickerInput.vue';
   import BaseChart from '@/components/BaseChart.vue';
   import { fetchStockDataById } from '@/services/stockApi';
@@ -110,11 +111,20 @@
   import { formatLargeNumber, formatPercentage, formatCurrency } from '@/utils/formatters';
   import type { StockData, ChartData, PlotlyTrace } from '@/types/stock';
   
-  // --- State ---
-  const tickerId = ref<string>('NVDA'); // Default ticker
+  const tickerStore = useTickerStore();
+  const tickerId = ref<string>('');
   const stockData = ref<StockData | null>(null);
   const loading = ref<boolean>(false);
   const error = ref<string | null>(null);
+  
+  // Initialize state once component is mounted
+  onMounted(() => {
+    tickerId.value = tickerStore.currentTicker;
+    
+    if (tickerId.value) {
+      loadStockData(tickerId.value);
+    }
+  });
   
   // --- Helper: Get Latest Value ---
   const getLatestValue = (data: ChartData | undefined): number | null => {
@@ -261,6 +271,7 @@
       console.log(`Fetching data for: ${tickerToLoad}`);
       stockData.value = await fetchStockDataById(tickerToLoad);
       tickerId.value = tickerToLoad; // Update tickerId only on success
+      tickerStore.setTicker(tickerToLoad); // Update shared store
       console.log(`Data received for: ${tickerToLoad}`);
     } catch (err: any) {
       console.error("Error in loadStockData:", err);
@@ -270,6 +281,13 @@
       loading.value = false;
     }
   };
+  
+  // Watch for store changes from other components
+  watch(() => tickerStore.currentTicker, (newTicker) => {
+    if (newTicker && newTicker !== tickerId.value) {
+      loadStockData(newTicker);
+    }
+  });
   
   // --- Lifecycle Hooks ---
   onMounted(() => {

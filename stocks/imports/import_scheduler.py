@@ -1953,6 +1953,170 @@ def rank_stocks():
 
     logger.info("Rank Stocks Job finished.")
 
+def growthProbability(ticker_id: str, days: int, percent_range: int):
+    """
+    Calculates and prints the probability of stock price changes exceeding certain thresholds
+    over a specified number of days, useful for option strategies like the Wheel.
+    Also displays a text-based histogram of the changes.
+
+    Args:
+        ticker_id: The stock ticker symbol.
+        days: The number of days over which to calculate the price change.
+        percent_range: The maximum percentage change threshold (positive and negative)
+                       to calculate probabilities for.
+    """
+    logger.info(f"growthProbability({ticker_id}, {days}, {percent_range}) - Start")
+    connection = None
+    try:
+        connection = DB.get_connection_mysql()
+        dao_tickers_data = DAO_TickersData(connection)
+
+        # Fetch all historical prices for the ticker
+        prices_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, -1)
+        num_prices = len(prices_list)
+
+        if not prices_list:
+            logger.warning(f"No price data found for ticker {ticker_id}")
+            return
+
+        # Sort prices by date in ascending order
+        prices_list.sort(key=lambda x: x.date, reverse=False)
+
+        changes_pct = []
+
+        if num_prices <= days:
+            logger.warning(f"Insufficient price data for {ticker_id} ({num_prices} points) to calculate {days}-day changes.")
+            return
+
+        # Calculate percentage changes over the specified number of days
+        for i in range(num_prices - days):
+            price_start = prices_list[i].value
+            price_end = prices_list[i + days].value
+
+            # Ensure prices are valid and avoid division by zero
+            if price_start is not None and price_end is not None and price_start != 0:
+                change = ((price_end - price_start) / price_start) * 100
+                changes_pct.append(change)
+
+        if not changes_pct:
+            logger.warning(f"Could not calculate any percentage changes for {ticker_id}.")
+            return
+
+        changes_array = np.array(changes_pct)
+        total_changes = len(changes_array)
+        probabilities = {}
+
+        # Calculate probabilities for exceeding each percentage threshold in the range
+        for x in range(-percent_range, percent_range + 1):
+            if x == 0:
+                continue  # Skip 0%
+
+            count = 0
+            if x > 0:
+                # Count changes GREATER THAN OR EQUAL TO x% (Price increases by at least x%)
+                count = np.sum(changes_array >= x)
+            elif x < 0:
+                # Count changes LESS THAN OR EQUAL TO x% (Price decreases by at least |x|%)
+                count = np.sum(changes_array <= x)
+
+            if total_changes > 0:
+                prob = (count / total_changes) * 100
+                probabilities[x] = prob
+            else:
+                probabilities[x] = 0 # Should not happen if changes_pct is not empty
+
+        logger.info(f"Calculated Probabilities of Price Exceeding Thresholds for {ticker_id} over {days} days:")
+        # Sort results numerically from negative to positive
+        sorted_keys = sorted(probabilities.keys())
+        for x in sorted_keys:
+                # Use standard print to output directly to console/output pane
+                if x > 0:
+                    # Probability of price increasing by AT LEAST x%
+                    print(f"Probability of change >= {x}%: {probabilities[x]:.2f}%")
+                else: # x < 0
+                    # Probability of price decreasing by AT LEAST |x|% (i.e., change <= x%)
+                    print(f"Probability of change <= {x}%: {probabilities[x]:.2f}%")
+
+
+        # Print statistics
+        print(f"\n--- Statistics ---")
+        print(f"Total prices loaded from DB: {num_prices}")
+        print(f"Historical {days}-day periods analyzed: {total_changes}")
+        if total_changes > 0:
+            mean_change = np.mean(changes_array)
+            std_dev = np.std(changes_array)
+            std_dev_2 = 2 * std_dev
+            min_change = np.min(changes_array)
+            max_change = np.max(changes_array)
+
+            print(f"Average {days}-day change: {mean_change:.2f}%")
+            print(f"1st Standard Deviation of {days}-day change: {std_dev:.2f}%")
+            print(f"2nd Standard Deviation of {days}-day change: {std_dev_2:.2f}%")
+            print(f"Minimum {days}-day change: {min_change:.2f}%")
+            print(f"Maximum {days}-day change: {max_change:.2f}%")
+
+            # --- Text Histogram ---
+            print(f"\n--- Text Histogram of {days}-day % Changes ---")
+            num_bins = 100  # Adjust number of bins as needed
+            try:
+                # Use np.histogram to bin the data
+                counts, bin_edges = np.histogram(changes_array, bins=num_bins)
+                max_count = np.max(counts) if counts.size > 0 else 0
+                max_asterisks = 100 # Max width of the histogram bars
+
+                # Find bin indices for mean and standard deviations
+                mean_bin = np.digitize(mean_change, bin_edges) - 1
+                sd1_minus_bin = np.digitize(mean_change - std_dev, bin_edges) - 1
+                sd1_plus_bin = np.digitize(mean_change + std_dev, bin_edges) - 1
+                sd2_minus_bin = np.digitize(mean_change - std_dev_2, bin_edges) - 1
+                sd2_plus_bin = np.digitize(mean_change + std_dev_2, bin_edges) - 1
+
+                # Ensure indices are within valid range [0, num_bins-1]
+                valid_indices = range(num_bins)
+                mean_bin = mean_bin if mean_bin in valid_indices else -1 # Use -1 if outside range
+                sd1_minus_bin = sd1_minus_bin if sd1_minus_bin in valid_indices else -1
+                sd1_plus_bin = sd1_plus_bin if sd1_plus_bin in valid_indices else -1
+                sd2_minus_bin = sd2_minus_bin if sd2_minus_bin in valid_indices else -1
+                sd2_plus_bin = sd2_plus_bin if sd2_plus_bin in valid_indices else -1
+
+
+                for i in range(num_bins):
+                    bin_start = bin_edges[i]
+                    bin_end = bin_edges[i+1]
+                    count = counts[i]
+
+                    # Scale the number of asterisks
+                    if max_count > 0:
+                        num_asterisks = int((count / max_count) * max_asterisks)
+                    else:
+                        num_asterisks = 0
+                    asterisks = '*' * num_asterisks
+
+                    # Prepare markers
+                    markers = ""
+                    if i == mean_bin: markers += " | MEAN"
+                    if i == sd1_minus_bin: markers += " | -1SD"
+                    if i == sd1_plus_bin: markers += " | +1SD"
+                    if i == sd2_minus_bin: markers += " | -2SD"
+                    if i == sd2_plus_bin: markers += " | +2SD"
+
+                    # Print bin range, asterisks, and markers
+                    print(f"{bin_start:>7.2f}% to {bin_end:>7.2f}% | {asterisks}{markers}")
+
+            except Exception as hist_err:
+                 logger.error(f"Error generating histogram for {ticker_id}: {hist_err}")
+
+
+    except Exception as e:
+        logger.error(f"growthProbability - Error processing {ticker_id}: {e}")
+        traceback.print_exc()
+    finally:
+        # Ensure the database connection is closed
+        if connection and connection.is_connected():
+            connection.close()
+            logger.debug("Database connection closed.")
+    logger.info(f"growthProbability({ticker_id}) - End")
+
 def start_import_schedulers():
         #scheduler.add_job(notify_earnings, 'cron', second='*/10')
 
@@ -2006,6 +2170,8 @@ def start_import_schedulers():
             #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
             #analyze_option_sentiment()
             #calc_ratio_discounts()
+            #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
+            
             pass
 
         

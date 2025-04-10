@@ -8,8 +8,39 @@ from stocks.db.constants import TICKERS_TIME_DATA__TYPE__CONST
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import timedelta, datetime
 from stocks.db.row_tickers_data import ROW_TickersData
+import logging
+from logging.handlers import RotatingFileHandler
+import numpy as np
+from scipy import stats
+import traceback
+
 
 fastApiApp = FastAPI()
+
+# Create a custom logger
+logger = logging.getLogger('api_logger')
+logger.setLevel(logging.DEBUG)  # Set minimum level of logging
+
+# Create handlers
+rotating_file_handler = RotatingFileHandler(
+    'invest.log', maxBytes=10*1024*1024, backupCount=50)  # Log file that rolls over at 10MB
+console_handler = logging.StreamHandler()  # Console handler
+
+# Set level for each handler
+rotating_file_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.DEBUG)
+
+# Create formatters and add it to handlers
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+rotating_file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# Add handlers to the logger
+logger.addHandler(rotating_file_handler)
+logger.addHandler(console_handler)
+
+logging.getLogger('yfinance').setLevel(logging.CRITICAL + 1)  # This effectively disables logging for this logger
+logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL + 1)  # This effectively disables logging for this logger
 
 # Allow requests from your Vue app running on localhost:4000.
 origins = [
@@ -66,6 +97,142 @@ def prepare_chart_data_TTM(ticker_data_list: list[ROW_TickersData]):
 
     return [list_x, list_y]
 
+
+@fastApiApp.get("/options/growth_probability/{ticker_id}/{days}/{percent_range}")
+def growthProbability(ticker_id: str, days: int, percent_range: int):
+    """
+    Calculates probabilities of stock price changes exceeding thresholds over specified days.
+    Returns detailed statistics and histogram data in the following structure:
+
+    {
+        "probabilities": {
+            "-10": 15.5,  # Probability of 15.5% that price decreases by 10% or more
+            "10": 12.3,   # Probability of 12.3% that price increases by 10% or more
+            ...
+        },
+        "statistics": {
+            "total_prices": 1000,
+            "periods_analyzed": 950,
+            "mean_change": 2.5,
+            "std_dev": 3.2,
+            "std_dev_2": 6.4,
+            "min_change": -15.2,
+            "max_change": 20.1
+        },
+        "histogram": [
+            {
+                "bin_start": -20.0,
+                "bin_end": -19.2,
+                "count": 5,
+                "markers": ["-2SD"]  # Can include: "MEAN", "-1SD", "+1SD", "-2SD", "+2SD"
+            },
+            ...
+        ]
+    }
+
+    Args:
+        ticker_id: The stock ticker symbol
+        days: Number of days for price change calculation
+        percent_range: Maximum percentage threshold (positive/negative) for probabilities
+    """
+    logger.info(f"growthProbability({ticker_id}, {days}, {percent_range}) - Start")
+    result = {
+        "probabilities": {},
+        "statistics": {},
+        "histogram": []
+    }
+    
+    connection = None
+    try:
+        connection = DB.get_connection_mysql()
+        dao_tickers_data = DAO_TickersData(connection)
+
+        prices_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, -1)
+        num_prices = len(prices_list)
+
+        if not prices_list:
+            logger.warning(f"No price data found for ticker {ticker_id}")
+            return result
+
+        prices_list.sort(key=lambda x: x.date, reverse=False)
+        changes_pct = []
+
+        if num_prices <= days:
+            logger.warning(f"Insufficient price data for {ticker_id}")
+            return result
+
+        for i in range(num_prices - days):
+            price_start = prices_list[i].value
+            price_end = prices_list[i + days].value
+            if price_start is not None and price_end is not None and price_start != 0:
+                change = ((price_end - price_start) / price_start) * 100
+                changes_pct.append(change)
+
+        if not changes_pct:
+            return result
+
+        changes_array = np.array(changes_pct)
+        total_changes = len(changes_array)
+
+        # Calculate probabilities
+        for x in range(-percent_range, percent_range + 1):
+            if x == 0:
+                continue
+            count = np.sum(changes_array >= x) if x > 0 else np.sum(changes_array <= x)
+            prob = (count / total_changes) * 100 if total_changes > 0 else 0
+            result["probabilities"][str(x)] = round(prob, 2)
+
+        # Calculate statistics
+        result["statistics"] = {
+            "total_prices": num_prices,
+            "periods_analyzed": total_changes
+        }
+
+        if total_changes > 0:
+            mean_change = np.mean(changes_array)
+            std_dev = np.std(changes_array)
+            result["statistics"].update({
+                "mean_change": round(mean_change, 2),
+                "std_dev": round(std_dev, 2),
+                "std_dev_2": round(2 * std_dev, 2),
+                "min_change": round(np.min(changes_array), 2),
+                "max_change": round(np.max(changes_array), 2)
+            })
+
+            # Generate histogram
+            num_bins = 100
+            counts, bin_edges = np.histogram(changes_array, bins=num_bins)
+            mean_bin = np.digitize(mean_change, bin_edges) - 1
+            sd1_minus_bin = np.digitize(mean_change - std_dev, bin_edges) - 1
+            sd1_plus_bin = np.digitize(mean_change + std_dev, bin_edges) - 1
+            sd2_minus_bin = np.digitize(mean_change - std_dev * 2, bin_edges) - 1
+            sd2_plus_bin = np.digitize(mean_change + std_dev * 2, bin_edges) - 1
+
+            for i in range(num_bins):
+                markers = []
+                if i == mean_bin: markers.append("MEAN")
+                if i == sd1_minus_bin: markers.append("-1SD")
+                if i == sd1_plus_bin: markers.append("+1SD")
+                if i == sd2_minus_bin: markers.append("-2SD")
+                if i == sd2_plus_bin: markers.append("+2SD")
+
+                result["histogram"].append({
+                    "bin_start": round(bin_edges[i], 2),
+                    "bin_end": round(bin_edges[i+1], 2),
+                    "count": int(counts[i]),
+                    "markers": markers
+                })
+
+    except Exception as e:
+        logger.error(f"growthProbability - Error processing {ticker_id}: {e}")
+        traceback.print_exc()
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+            logger.debug("Database connection closed.")
+            
+    logger.info(f"growthProbability({ticker_id}) - End")
+    return result
 
 @fastApiApp.get("/stock/{ticker_id}")
 def get_stock(ticker_id: str):
