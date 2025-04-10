@@ -161,7 +161,9 @@ const chartLayout = computed(() => ({
   showlegend: true,
   xaxis: {
     title: 'Price Change (%)',
-    gridcolor: '#e0e0e0'
+    gridcolor: '#e0e0e0',
+    range: [-percentRange.value, percentRange.value], // Set range to match user input
+    fixedrange: true // Prevent zooming/panning on x-axis to maintain the range
   },
   yaxis: {
     title: 'Frequency',
