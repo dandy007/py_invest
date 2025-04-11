@@ -25,17 +25,15 @@ export async function fetchStockDataById(tickerId: string): Promise<StockData> {
 }
 
 export interface CurrentPriceResponse {
+  ticker_id: string;
   price: number;
   timestamp: string;
 }
 
 export async function getCurrentPrice(tickerId: string): Promise<CurrentPriceResponse> {
   try {
-    const stockData = await fetchStockDataById(tickerId);
-    return {
-      price: stockData.CURRENT_PRICE || 0,
-      timestamp: new Date().toISOString()
-    };
+    const response = await axios.get<CurrentPriceResponse>(`${API_BASE_URL}/stock/current_price/${tickerId}`);
+    return response.data;
   } catch (error) {
     console.error(`Error getting current price for ${tickerId}:`, error);
     throw error;

@@ -21,6 +21,26 @@ interface GrowthProbabilityResponse {
     }>;
 }
 
+export interface OptionChainItem {
+  strike: number;
+  last_price: number;
+  bid: number;
+  ask: number;
+  volume: number;
+  open_interest: number;
+}
+
+interface OptionChainResponse {
+  expiration: string;
+  option_type: string;
+  option_chain: OptionChainItem[];
+}
+
+interface ExpirationDatesResponse {
+  ticker_id: string;
+  expiration_dates: string[];
+}
+
 export const getGrowthProbability = async (
     tickerId: string, 
     days: number = 30, 
@@ -35,4 +55,32 @@ export const getGrowthProbability = async (
         console.error('Error fetching growth probability:', error);
         throw error;
     }
+};
+
+export const getOptionChain = async (
+  tickerId: string,
+  expiration: string,
+  optionType: 'call' | 'put'
+): Promise<OptionChainResponse> => {
+  try {
+    const response = await axios.get<OptionChainResponse>(
+      `${BASE_URL}/options/get_chain/${tickerId}/${expiration}/${optionType}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching option chain:', error);
+    throw error;
+  }
+};
+
+export const getExpirationDates = async (tickerId: string): Promise<string[]> => {
+  try {
+    const response = await axios.get<ExpirationDatesResponse>(
+      `${BASE_URL}/options/get_expirations/${tickerId}`
+    );
+    return response.data.expiration_dates;
+  } catch (error) {
+    console.error('Error fetching expiration dates:', error);
+    throw error;
+  }
 };

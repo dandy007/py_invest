@@ -13,6 +13,8 @@ from logging.handlers import RotatingFileHandler
 import numpy as np
 from scipy import stats
 import traceback
+import yfinance as yf
+import pandas as pd
 
 
 fastApiApp = FastAPI()
@@ -97,6 +99,111 @@ def prepare_chart_data_TTM(ticker_data_list: list[ROW_TickersData]):
 
     return [list_x, list_y]
 
+
+
+@fastApiApp.get("/options/get_expirations/{ticker_id}")
+def get_expirations(ticker_id: str):
+    """
+    Retrieves available expiration dates for options of a given stock ticker.
+    Returns the expiration dates in the following structure:
+
+    {
+        "ticker_id": "AAPL",
+        "expiration_dates": [
+            "2023-10-20",
+            "2023-10-27",
+            ...
+        ]
+    }
+
+    Args:
+        ticker_id: The stock ticker symbol
+
+    Returns:
+        JSON response containing the expiration dates
+    """
+    logger.info(f"get_expirations({ticker_id}) - Start")
+    try:
+        stock = yf.Ticker(ticker_id)
+        expirations = stock.options
+        return {
+            "ticker_id": ticker_id,
+            "expiration_dates": expirations
+        }
+    except Exception as e:
+        logger.error(f"Error fetching expiration dates: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch expiration dates")
+
+@fastApiApp.get("/options/get_chain/{ticker_id}/{expiration}/{option_type}")
+def get_chain(ticker_id: str, expiration: str, option_type: str):
+    """
+    Retrieves option chain data for a given stock ticker, expiration date and option type.
+    Returns the option chain data in the following structure:
+
+    {
+        "expiration": "2023-10-20",
+        "option_type": "call",
+        "option_chain": [
+            {
+                "strike": 150.0,
+                "last_price": 5.0,
+                "bid": 4.5,
+                "ask": 5.5,
+                "volume": 100,
+                "open_interest": 200
+            },
+            ...
+        ]
+    }
+
+    Args:
+        ticker_id: The stock ticker symbol
+        expiration: The expiration date of the options (YYYY-MM-DD)
+        option_type: The type of option (call/put/both)
+
+    Returns:
+        JSON response containing the option chain data for all strikes
+    """
+    logger.info(f"get_chain({ticker_id}, {expiration}, {option_type}) - Start")
+    try:
+        stock = yf.Ticker(ticker_id)
+        exp_date = datetime.strptime(expiration, '%Y-%m-%d').date()
+        
+        # Get option chain for the specified expiration
+        opt = stock.option_chain(expiration)
+        
+        result = {
+            "expiration": expiration,
+            "option_type": option_type,
+            "option_chain": []
+        }
+
+        # Process based on option type
+        chains = []
+        if option_type.lower() == 'call':
+            chains = [opt.calls]
+        elif option_type.lower() == 'put':
+            chains = [opt.puts]
+        elif option_type.lower() == 'both':
+            chains = [opt.calls, opt.puts]
+        
+        # Process each chain
+        for chain in chains:
+            for _, row in chain.iterrows():
+                result["option_chain"].append({
+                    "strike": float(row['strike']),
+                    "last_price": float(row['lastPrice']),
+                    "bid": float(row['bid']),
+                    "ask": float(row['ask']),
+                    "volume": int(row['volume']) if not pd.isna(row['volume']) else 0,
+                    "open_interest": int(row['openInterest']) if not pd.isna(row['openInterest']) else 0
+                })
+        
+        return result
+
+    except Exception as e:
+        logger.error(f"Error fetching option chain: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch option data")
 
 @fastApiApp.get("/options/growth_probability/{ticker_id}/{days}/{percent_range}")
 def growthProbability(ticker_id: str, days: int, percent_range: int):
@@ -233,6 +340,40 @@ def growthProbability(ticker_id: str, days: int, percent_range: int):
             
     logger.info(f"growthProbability({ticker_id}) - End")
     return result
+
+@fastApiApp.get("/stock/current_price/{ticker_id}")
+def get_current_price(ticker_id: str):
+    """
+    Retrieves the current market price for a given stock ticker.
+    Returns the price data in the following structure:
+
+    {
+        "ticker_id": "AAPL",
+        "price": 150.25,
+        "timestamp": "2023-10-20T15:30:00"
+    }
+
+    Args:
+        ticker_id: The stock ticker symbol
+
+    Returns:
+        JSON response containing current price and timestamp
+    """
+    logger.info(f"get_current_price({ticker_id}) - Start")
+    try:
+        stock = yf.Ticker(ticker_id)
+        current_price = stock.info.get('regularMarketPrice')
+        if current_price is None:
+            raise HTTPException(status_code=404, detail="Price data not available")
+            
+        return {
+            "ticker_id": ticker_id,
+            "price": current_price,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error fetching current price: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch price data")
 
 @fastApiApp.get("/stock/{ticker_id}")
 def get_stock(ticker_id: str):

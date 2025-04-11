@@ -102,11 +102,11 @@
   </template>
   
   <script setup lang="ts">
-  import { ref, onMounted, computed, watch } from 'vue';
+  import { ref, onMounted, computed, watch, onUnmounted } from 'vue';
   import { useTickerStore } from '@/stores/tickerStore';
   import TickerInput from '@/components/TickerInput.vue';
   import BaseChart from '@/components/BaseChart.vue';
-  import { fetchStockDataById } from '@/services/stockApi';
+  import { fetchStockDataById, getCurrentPrice } from '@/services/stockApi';
   import { calculateCAGR, estimateYears } from '@/utils/cagr';
   import { formatLargeNumber, formatPercentage, formatCurrency } from '@/utils/formatters';
   import type { StockData, ChartData, PlotlyTrace } from '@/types/stock';
@@ -116,6 +116,7 @@
   const stockData = ref<StockData | null>(null);
   const loading = ref<boolean>(false);
   const error = ref<string | null>(null);
+  const priceRefreshInterval = ref<number | null>(null);
   
   // Initialize state once component is mounted
   onMounted(() => {
@@ -263,15 +264,46 @@
       : []);
   
   // --- Methods ---
+  const refreshCurrentPrice = async () => {
+    if (!tickerId.value) return;
+    
+    try {
+      const priceData = await getCurrentPrice(tickerId.value);
+      if (stockData.value) {
+        // Update the last price in the price data array
+        stockData.value.PRICE_DATA[1][stockData.value.PRICE_DATA[1].length - 1] = priceData.price;
+      }
+    } catch (err) {
+      console.error('Error refreshing price:', err);
+    }
+  };
+
   const loadStockData = async (tickerToLoad: string) => {
     loading.value = true;
     error.value = null;
     stockData.value = null; // Clear previous data
     try {
       console.log(`Fetching data for: ${tickerToLoad}`);
-      stockData.value = await fetchStockDataById(tickerToLoad);
+      const [stockResponse, currentPrice] = await Promise.all([
+        fetchStockDataById(tickerToLoad),
+        getCurrentPrice(tickerToLoad)
+      ]);
+  
+      // Update the last price with current price
+      if (stockResponse.PRICE_DATA[1].length > 0) {
+        stockResponse.PRICE_DATA[1][stockResponse.PRICE_DATA[1].length - 1] = currentPrice.price;
+      }
+  
+      stockData.value = stockResponse;
       tickerId.value = tickerToLoad; // Update tickerId only on success
       tickerStore.setTicker(tickerToLoad); // Update shared store
+  
+      // Setup price refresh interval
+      if (priceRefreshInterval.value) {
+        clearInterval(priceRefreshInterval.value);
+      }
+      priceRefreshInterval.value = window.setInterval(refreshCurrentPrice, 3000);
+  
       console.log(`Data received for: ${tickerToLoad}`);
     } catch (err: any) {
       console.error("Error in loadStockData:", err);
@@ -293,6 +325,12 @@
   onMounted(() => {
     if (tickerId.value) {
       loadStockData(tickerId.value);
+    }
+  });
+
+  onUnmounted(() => {
+    if (priceRefreshInterval.value) {
+      clearInterval(priceRefreshInterval.value);
     }
   });
   
