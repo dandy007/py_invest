@@ -85,7 +85,6 @@
           <select 
             id="expiration" 
             v-model="selectedExpiration"
-            @change="handleExpirationChange"
           >
             <option value="">Select expiration</option>
             <option v-for="date in expirationDates" :key="date" :value="date">
@@ -178,9 +177,6 @@
           </div>
         </div>
       </div>
-
-      <!-- Add PmccAnalysis component after the options chain tables -->
-      <PmccAnalysis :tickerId="tickerId" />
     </div>
   </div>
 </template>
@@ -196,7 +192,6 @@ import type { OptionChainItem } from '@/services/optionsApi';
 import { getCurrentPrice, fetchStockDataById } from '@/services/stockApi';
 import type { PlotlyTrace } from '@/types/stock';
 import type { StockData } from '@/types/stock';
-import PmccAnalysis from '@/components/PmccAnalysis.vue';
 
 // State
 const tickerStore = useTickerStore();
@@ -458,17 +453,27 @@ const refreshCurrentPrice = async () => {
   }
 };
 
-// Upravíme watch na selectedExpiration - odstraníme interval
+// Remove both existing watch handlers for selectedExpiration and replace with a single one
 watch(selectedExpiration, async (newExpiration, oldExpiration) => {
   if (newExpiration && newExpiration !== oldExpiration) {
-    await loadOptionChains();
-  }
-});
-
-// Add watch for expiration changes to handle interval
-watch(selectedExpiration, (newExpiration) => {
-  if (newExpiration) {
-    loadOptionChains();
+    if (selectedExpiration.value) {
+      // Update histogram days to match expiration
+      const daysToExp = getDaysUntil(selectedExpiration.value);
+      days.value = daysToExp;
+      
+      // Update store and reload data
+      tickerStore.updateHistogramSettings({
+        days: daysToExp,
+        percentRange: percentRange.value
+      });
+      
+      // Load new option chains
+      await loadOptionChains();
+      
+      // Update histogram data
+      const optionsResponse = await getGrowthProbability(tickerId.value, days.value, percentRange.value);
+      optionsData.value = optionsResponse;
+    }
   }
 });
 
@@ -480,27 +485,6 @@ const getDaysUntil = (dateStr: string): number => {
   expDate.setHours(0, 0, 0, 0);
   const diffTime = expDate.getTime() - today.getTime();
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-};
-
-// Add handleExpirationChange method
-const handleExpirationChange = async () => {
-  if (selectedExpiration.value) {
-    // Update histogram days to match expiration
-    const daysToExp = getDaysUntil(selectedExpiration.value);
-    days.value = daysToExp;
-    
-    // Update store and reload data
-    tickerStore.updateHistogramSettings({
-      days: daysToExp,
-      percentRange: percentRange.value
-    });
-    
-    // Reload both histogram and option chains
-    await Promise.all([
-      loadOptionsData(tickerId.value),
-      loadOptionChains()
-    ]);
-  }
 };
 
 // Add the standard deviation check function
