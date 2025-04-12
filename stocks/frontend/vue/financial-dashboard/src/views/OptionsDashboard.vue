@@ -178,6 +178,9 @@
           </div>
         </div>
       </div>
+
+      <!-- Add PmccAnalysis component after the options chain tables -->
+      <PmccAnalysis :tickerId="tickerId" />
     </div>
   </div>
 </template>
@@ -193,6 +196,7 @@ import type { OptionChainItem } from '@/services/optionsApi';
 import { getCurrentPrice, fetchStockDataById } from '@/services/stockApi';
 import type { PlotlyTrace } from '@/types/stock';
 import type { StockData } from '@/types/stock';
+import PmccAnalysis from '@/components/PmccAnalysis.vue';
 
 // State
 const tickerStore = useTickerStore();

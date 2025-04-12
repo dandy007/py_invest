@@ -41,6 +41,22 @@ interface ExpirationDatesResponse {
   expiration_dates: string[];
 }
 
+export interface PmccCombination {
+  longCall: {
+    expiration: string;
+    strike: number;
+    cost: number;
+  };
+  shortCall: {
+    expiration: string;
+    strike: number;
+    premium: number;
+  };
+  maxProfit: number;
+  breakEven: number;
+  guaranteedProfit: boolean;
+}
+
 export const getGrowthProbability = async (
     tickerId: string, 
     days: number = 30, 
@@ -81,6 +97,20 @@ export const getExpirationDates = async (tickerId: string): Promise<string[]> =>
     return response.data.expiration_dates;
   } catch (error) {
     console.error('Error fetching expiration dates:', error);
+    throw error;
+  }
+};
+
+export const analyzePmccCombinations = async (
+  tickerId: string,
+): Promise<PmccCombination[]> => {
+  try {
+    const response = await axios.get<PmccCombination[]>(
+      `${BASE_URL}/options/analyze_pmcc/${tickerId}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error analyzing PMCC combinations:', error);
     throw error;
   }
 };
