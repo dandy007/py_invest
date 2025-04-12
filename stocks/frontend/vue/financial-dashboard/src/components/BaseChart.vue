@@ -7,7 +7,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import Plotly, { type Data, type Layout } from 'plotly.js'; // Import specific types
+import * as Plotly from 'plotly.js'; // Fixed import statement
+import type { Data, Layout } from 'plotly.js';
 import type { PlotlyTrace } from '@/types/stock';
 
 const props = defineProps<{
@@ -97,7 +98,7 @@ watch(() => [props.traces, props.layoutOptions], () => {
   background-color: white;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   border-radius: 5px;
-  min-height: 350px; /* Ensure minimum height */
+  min-height: 650px; /* Zvýšeno z 350px pro zachování poměru s obsahem */
   display: flex;
   flex-direction: column;
 }
@@ -111,6 +112,6 @@ watch(() => [props.traces, props.layoutOptions], () => {
 .plotly-chart {
   width: 100%;
   flex-grow: 1; /* Allow chart div to fill container */
-  min-height: 300px; /* Ensure chart itself has min height */
+  min-height: 600px; /* Zvýšeno z 300px na dvojnásobek */
 }
 </style>

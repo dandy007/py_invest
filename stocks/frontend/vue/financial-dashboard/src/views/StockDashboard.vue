@@ -40,28 +40,68 @@
             :title="`PE (${latestPE !== null ? latestPE.toFixed(2) : 'N/A'})`"
             :traces="peTrace"
             class="chart-narrow"
-            :layoutOptions="{ showlegend: false }"
+            :layoutOptions="{ 
+                showlegend: true,
+                margin: { l: 50, r: 50, b: 100, t: 50, pad: 4 },
+                legend: {
+                    orientation: 'h',
+                    y: -0.4,
+                    yanchor: 'top',
+                    xanchor: 'center',
+                    x: 0.5
+                }
+            }"
            />
            <BaseChart
             :chartId="'ps-chart'"
             :title="`PS (${latestPS !== null ? latestPS.toFixed(2) : 'N/A'})`"
             :traces="psTrace"
              class="chart-narrow"
-             :layoutOptions="{ showlegend: false }"
+             :layoutOptions="{ 
+                showlegend: true,
+                margin: { l: 50, r: 50, b: 100, t: 50, pad: 4 },
+                legend: {
+                    orientation: 'h',
+                    y: -0.4,
+                    yanchor: 'top',
+                    xanchor: 'center',
+                    x: 0.5
+                }
+            }"
           />
            <BaseChart
             :chartId="'pb-chart'"
             :title="`PB (${latestPB !== null ? latestPB.toFixed(2) : 'N/A'})`"
             :traces="pbTrace"
              class="chart-narrow"
-             :layoutOptions="{ showlegend: false }"
+             :layoutOptions="{ 
+                showlegend: true,
+                margin: { l: 50, r: 50, b: 100, t: 50, pad: 4 },
+                legend: {
+                    orientation: 'h',
+                    y: -0.4,
+                    yanchor: 'top',
+                    xanchor: 'center',
+                    x: 0.5
+                }
+            }"
           />
            <BaseChart
             :chartId="'pfcf-chart'"
             :title="`PFCF (${latestPFCF !== null ? latestPFCF.toFixed(2) : 'N/A'})`"
             :traces="pfcfTrace"
             class="chart-narrow"
-            :layoutOptions="{ showlegend: false }"
+            :layoutOptions="{ 
+                showlegend: true,
+                margin: { l: 50, r: 50, b: 100, t: 50, pad: 4 },
+                legend: {
+                    orientation: 'h',
+                    y: -0.4,
+                    yanchor: 'top',
+                    xanchor: 'center',
+                    x: 0.5
+                }
+            }"
           />
         </div>
   
@@ -169,6 +209,13 @@
       return trace;
   };
   
+  // --- Helper: Calculate average of values ---
+  const calculateAverage = (values: (number | null)[]): number | null => {
+    const validValues = values.filter((v): v is number => v !== null);
+    if (validValues.length === 0) return null;
+    return validValues.reduce((sum, val) => sum + val, 0) / validValues.length;
+  };
+  
   // --- Computed Properties for Chart Traces ---
   
   // 3. Price Chart
@@ -211,11 +258,153 @@
   const latestPB = computed(() => getLatestValue(stockData.value?.PB));
   const latestPFCF = computed(() => getLatestValue(stockData.value?.PFCF));
   
-  const peTrace = computed((): PlotlyTrace[] => stockData.value.PE ? [createTrace(stockData.value.PE, 'PE', { color: '#ff7f0e' })].filter((t): t is PlotlyTrace => t !== null) : []);
-  // console.log("Computed peTrace:", peTrace); // <-- PŘIDAT LOG
-  const psTrace = computed((): PlotlyTrace[] => stockData.value.PS ? [createTrace(stockData.value.PS, 'PS', { color: '#ff7f0e' })].filter((t): t is PlotlyTrace => t !== null) : []);
-  const pbTrace = computed((): PlotlyTrace[] => stockData.value.PB ? [createTrace(stockData.value.PB, 'PB', { color: '#ff7f0e' })].filter((t): t is PlotlyTrace => t !== null) : []);
-  const pfcfTrace = computed((): PlotlyTrace[] => stockData.value.PFCF ? [createTrace(stockData.value.PFCF, 'PFCF', { color: '#ff7f0e' })].filter((t): t is PlotlyTrace => t !== null) : []);
+  const peTrace = computed((): PlotlyTrace[] => {
+    if (!stockData.value?.PE) return [];
+    const values = stockData.value.PE[1];
+    const avgPE = calculateAverage(values);
+    return [
+      createTrace(stockData.value.PE, 'PE', { color: '#ff7f0e' }),
+      ...(avgPE ? [
+        {
+          x: stockData.value.PE[0],
+          y: Array(values.length).fill(avgPE),
+          type: 'scatter',
+          mode: 'lines',
+          name: `Avg (${avgPE.toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 2 }
+        },
+        {
+          x: stockData.value.PE[0],
+          y: Array(values.length).fill(avgPE * 1.1),
+          type: 'scatter',
+          mode: 'lines',
+          name: `+10% (${(avgPE * 1.1).toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 1 },
+          visible: 'legendonly'
+        },
+        {
+          x: stockData.value.PE[0],
+          y: Array(values.length).fill(avgPE * 0.9),
+          type: 'scatter',
+          mode: 'lines',
+          name: `-10% (${(avgPE * 0.9).toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 1 },
+          visible: 'legendonly'
+        }
+      ] : [])
+    ].filter((t): t is PlotlyTrace => t !== null);
+  });
+  
+  const psTrace = computed((): PlotlyTrace[] => {
+    if (!stockData.value?.PS) return [];
+    const values = stockData.value.PS[1];
+    const avgPS = calculateAverage(values);
+    return [
+      createTrace(stockData.value.PS, 'PS', { color: '#ff7f0e' }),
+      ...(avgPS ? [
+        {
+          x: stockData.value.PS[0],
+          y: Array(values.length).fill(avgPS),
+          type: 'scatter',
+          mode: 'lines',
+          name: `Avg (${avgPS.toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 2 }
+        },
+        {
+          x: stockData.value.PS[0],
+          y: Array(values.length).fill(avgPS * 1.1),
+          type: 'scatter',
+          mode: 'lines',
+          name: `+10% (${(avgPS * 1.1).toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 1 },
+          visible: 'legendonly'
+        },
+        {
+          x: stockData.value.PS[0],
+          y: Array(values.length).fill(avgPS * 0.9),
+          type: 'scatter',
+          mode: 'lines',
+          name: `-10% (${(avgPS * 0.9).toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 1 },
+          visible: 'legendonly'
+        }
+      ] : [])
+    ].filter((t): t is PlotlyTrace => t !== null);
+  });
+  
+  const pbTrace = computed((): PlotlyTrace[] => {
+    if (!stockData.value?.PB) return [];
+    const values = stockData.value.PB[1];
+    const avgPB = calculateAverage(values);
+    return [
+      createTrace(stockData.value.PB, 'PB', { color: '#ff7f0e' }),
+      ...(avgPB ? [
+        {
+          x: stockData.value.PB[0],
+          y: Array(values.length).fill(avgPB),
+          type: 'scatter',
+          mode: 'lines',
+          name: `Avg (${avgPB.toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 2 }
+        },
+        {
+          x: stockData.value.PB[0],
+          y: Array(values.length).fill(avgPB * 1.1),
+          type: 'scatter',
+          mode: 'lines',
+          name: `+10% (${(avgPB * 1.1).toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 1 },
+          visible: 'legendonly'
+        },
+        {
+          x: stockData.value.PB[0],
+          y: Array(values.length).fill(avgPB * 0.9),
+          type: 'scatter',
+          mode: 'lines',
+          name: `-10% (${(avgPB * 0.9).toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 1 },
+          visible: 'legendonly'
+        }
+      ] : [])
+    ].filter((t): t is PlotlyTrace => t !== null);
+  });
+  
+  const pfcfTrace = computed((): PlotlyTrace[] => {
+    if (!stockData.value?.PFCF) return [];
+    const values = stockData.value.PFCF[1];
+    const avgPFCF = calculateAverage(values);
+    return [
+      createTrace(stockData.value.PFCF, 'PFCF', { color: '#ff7f0e' }),
+      ...(avgPFCF ? [
+        {
+          x: stockData.value.PFCF[0],
+          y: Array(values.length).fill(avgPFCF),
+          type: 'scatter',
+          mode: 'lines',
+          name: `Avg (${avgPFCF.toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 2 }
+        },
+        {
+          x: stockData.value.PFCF[0],
+          y: Array(values.length).fill(avgPFCF * 1.1),
+          type: 'scatter',
+          mode: 'lines',
+          name: `+10% (${(avgPFCF * 1.1).toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 1 },
+          visible: 'legendonly'
+        },
+        {
+          x: stockData.value.PFCF[0],
+          y: Array(values.length).fill(avgPFCF * 0.9),
+          type: 'scatter',
+          mode: 'lines',
+          name: `-10% (${(avgPFCF * 0.9).toFixed(2)})`,
+          line: { color: 'black', dash: 'dash', width: 1 },
+          visible: 'legendonly'
+        }
+      ] : [])
+    ].filter((t): t is PlotlyTrace => t !== null);
+  });
   
   
   // 6. Income Statement Chart
