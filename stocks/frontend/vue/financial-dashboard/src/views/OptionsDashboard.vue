@@ -289,6 +289,11 @@ const loadOptionsData = async (tickerToLoad: string) => {
   optionsData.value = null;
   
   try {
+    // Reset chains before loading new data
+    callChain.value = [];
+    putChain.value = [];
+    selectedExpiration.value = '';
+    
     // Load initial data
     const [stockResponse, optionsResponse, currentPrice] = await Promise.all([
       fetchStockDataById(tickerToLoad),
@@ -308,7 +313,7 @@ const loadOptionsData = async (tickerToLoad: string) => {
     }
     priceRefreshInterval.value = window.setInterval(refreshCurrentPrice, 3000);
 
-    // Load expiration dates after basic data is loaded
+    // Load expiration dates and chains after basic data is loaded
     await loadExpirationDates();
   } catch (err: any) {
     console.error("Error loading data:", err);
@@ -522,8 +527,8 @@ watch(stockPrice, async () => {
 
 // Add premium calculation function
 const calculatePremiumPercent = (bid: number, strike: number): string => {
-  if (!bid || !strike) return '0.00';
-  return ((bid / strike) * 100).toFixed(2);
+  if (!bid || !stockPrice.value) return '0.00';
+  return ((bid / stockPrice.value) * 100).toFixed(2);
 };
 
 // Přidáme refreshOptionChains funkci zpět
@@ -548,6 +553,27 @@ const refreshOptionChains = async () => {
     });
   } catch (err) {
     console.error('Error refreshing option chains:', err);
+  }
+};
+
+// Add these methods for table scroll synchronization
+const handleCallScroll = (event: Event) => {
+  if (!isManualScroll.value && putTableRef.value) {
+    isManualScroll.value = true;
+    putTableRef.value.scrollTop = (event.target as HTMLElement).scrollTop;
+    setTimeout(() => {
+      isManualScroll.value = false;
+    }, 50);
+  }
+};
+
+const handlePutScroll = (event: Event) => {
+  if (!isManualScroll.value && callTableRef.value) {
+    isManualScroll.value = true;
+    callTableRef.value.scrollTop = (event.target as HTMLElement).scrollTop;
+    setTimeout(() => {
+      isManualScroll.value = false;
+    }, 50);
   }
 };
 </script>
