@@ -235,7 +235,22 @@ const chartTraces = computed<PlotlyTrace[]>(() => {
         color: 'rgba(54, 162, 235, 1)',
         width: 1
       }
-    }
+    },
+    // Add custom hover template
+    hovertemplate: '%{x:.1f}%<br>' +
+      'Count: %{y}<br>' +
+      'Probability <= %{x:.1f}%: %{customdata[0]:.1f}%<br>' +
+      'Probability > %{x:.1f}%: %{customdata[1]:.1f}%<br>' +
+      '<extra></extra>',
+    customdata: xValues.map((x: number, i: number) => {
+      const totalCount = yValues.reduce((sum, count) => sum + count, 0);
+      const lessOrEqual = yValues.slice(0, i + 1).reduce((sum, count) => sum + count, 0);
+      const greater = yValues.slice(i).reduce((sum, count) => sum + count, 0);
+      return [
+        (lessOrEqual / totalCount) * 100,
+        (greater / totalCount) * 100
+      ];
+    })
   };
 
   // Add vertical lines for statistical markers

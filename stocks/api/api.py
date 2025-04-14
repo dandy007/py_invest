@@ -254,7 +254,7 @@ def growthProbability(ticker_id: str, days: int, percent_range: int):
         connection = DB.get_connection_mysql()
         dao_tickers_data = DAO_TickersData(connection)
 
-        prices_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, -1)
+        prices_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 5*250)
         num_prices = len(prices_list)
 
         if not prices_list:
