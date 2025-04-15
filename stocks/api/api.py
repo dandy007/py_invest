@@ -46,16 +46,21 @@ logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL + 1)  # Th
 
 # Allow requests from your Vue app running on localhost:4000.
 origins = [
-    "*",
-    # You can add more origins if needed, or use "*" to allow all (not recommended for production).
+    "http://localhost:4000",
+    "http://localhost:3000",
+    "http://127.0.0.1:4000",
+    "http://127.0.0.1:3000"
+    # Add other specific origins as needed
 ]
 
 fastApiApp.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # List the origins that are allowed
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 
@@ -191,10 +196,10 @@ def get_chain(ticker_id: str, expiration: str, option_type: str):
         for chain in chains:
             for _, row in chain.iterrows():
                 result["option_chain"].append({
-                    "strike": float(row['strike']),
-                    "last_price": float(row['lastPrice']),
-                    "bid": float(row['bid']),
-                    "ask": float(row['ask']),
+                    "strike": float(row['strike']) if np.isfinite(row['strike']) else None,
+                    "last_price": float(row['lastPrice']) if np.isfinite(row['lastPrice']) else None,
+                    "bid": float(row['bid']) if np.isfinite(row['bid']) else None,
+                    "ask": float(row['ask']) if np.isfinite(row['ask']) else None,
                     "volume": int(row['volume']) if not pd.isna(row['volume']) else 0,
                     "open_interest": int(row['openInterest']) if not pd.isna(row['openInterest']) else 0
                 })

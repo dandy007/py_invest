@@ -50,7 +50,7 @@
       <BaseChart
         v-if="chartTraces.length > 0"
         chartId="histogram-chart"
-        :title="`Price Change Distribution (${days} Days)`"
+        :title="`Price Change Distribution (${days} Days) - Total Samples: ${totalSamples.toLocaleString()}`"
         :traces="chartTraces"
         :layoutOptions="chartLayout"
       />
@@ -215,6 +215,13 @@ const callTableRef = ref<HTMLElement | null>(null);
 const putTableRef = ref<HTMLElement | null>(null);
 const isManualScroll = ref(false);
 
+// Add this computed property
+const totalSamples = computed(() => {
+  if (!optionsData.value?.histogram) return 0;
+  const yValues = optionsData.value.histogram.map((bin: any) => bin.count);
+  return yValues.reduce((sum, count) => sum + count, 0);
+});
+
 // Chart configuration
 const chartTraces = computed<PlotlyTrace[]>(() => {
   if (!optionsData.value?.histogram) return [];
@@ -236,19 +243,22 @@ const chartTraces = computed<PlotlyTrace[]>(() => {
         width: 1
       }
     },
-    // Add custom hover template
-    hovertemplate: '%{x:.1f}%<br>' +
+    hovertemplate: 
+      'Price Change: %{x:.1f}%<br>' +
+      'Target Price: ' + formatCurrency(stockPrice.value) + ' → ' + 
+      '%{customdata[2]}<br>' +
       'Count: %{y}<br>' +
-      'Probability <= %{x:.1f}%: %{customdata[0]:.1f}%<br>' +
+      'Probability ≤ %{x:.1f}%: %{customdata[0]:.1f}%<br>' +
       'Probability > %{x:.1f}%: %{customdata[1]:.1f}%<br>' +
       '<extra></extra>',
     customdata: xValues.map((x: number, i: number) => {
-      const totalCount = yValues.reduce((sum, count) => sum + count, 0);
       const lessOrEqual = yValues.slice(0, i + 1).reduce((sum, count) => sum + count, 0);
       const greater = yValues.slice(i).reduce((sum, count) => sum + count, 0);
+      const targetPrice = stockPrice.value * (1 + x / 100);
       return [
-        (lessOrEqual / totalCount) * 100,
-        (greater / totalCount) * 100
+        (lessOrEqual / totalSamples.value) * 100,
+        (greater / totalSamples.value) * 100,
+        formatCurrency(targetPrice)
       ];
     })
   };
