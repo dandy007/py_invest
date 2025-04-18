@@ -55,6 +55,15 @@
         :layoutOptions="chartLayout"
       />
 
+      <!-- Monte Carlo Histogram Chart -->
+      <BaseChart
+        v-if="mcChartTraces.length > 0"
+        chartId="mc-histogram-chart"
+        :title="`Monte Carlo Price Change Distribution (${days} Days) - Total Samples: ${mcTotalSamples.toLocaleString()}`"
+        :traces="mcChartTraces"
+        :layoutOptions="chartLayout"
+      />
+
       <!-- Statistics -->
       <div v-if="optionsData.statistics" class="statistics card">
         <h3>Statistics</h3>
@@ -187,7 +196,7 @@ import { useTickerStore } from '@/stores/tickerStore';
 import TickerInput from '@/components/TickerInput.vue';
 import BaseChart from '@/components/BaseChart.vue';
 import { formatCurrency } from '@/utils/formatters';
-import { getGrowthProbability, getOptionChain, getExpirationDates } from '@/services/optionsApi';
+import { getGrowthProbability, getOptionChain, getExpirationDates, getGrowthProbabilityMonteCarlo } from '@/services/optionsApi';
 import type { OptionChainItem } from '@/services/optionsApi';
 import { getCurrentPrice, fetchStockDataById } from '@/services/stockApi';
 import type { PlotlyTrace } from '@/types/stock';
@@ -311,6 +320,7 @@ const loadOptionsData = async (tickerToLoad: string) => {
   loading.value = true;
   error.value = null;
   optionsData.value = null;
+  monteCarloData.value = null;
   
   try {
     // Reset chains before loading new data
@@ -339,6 +349,9 @@ const loadOptionsData = async (tickerToLoad: string) => {
 
     // Load expiration dates and chains after basic data is loaded
     await loadExpirationDates();
+
+    // Fetch Monte Carlo data
+    monteCarloData.value = await getGrowthProbabilityMonteCarlo(tickerToLoad, days.value, percentRange.value);
   } catch (err: any) {
     console.error("Error loading data:", err);
     error.value = `Failed to load data for ${tickerToLoad}. ${err.message || 'Please try again.'}`;
@@ -589,6 +602,55 @@ const handlePutScroll = (event: Event) => {
     }, 50);
   }
 };
+
+// Add MC chart traces
+const mcTotalSamples = computed(() => {
+  if (!monteCarloData.value?.histogram) return 0;
+  const yValues = monteCarloData.value.histogram.map((bin: any) => bin.count);
+  return yValues.reduce((sum, count) => sum + count, 0);
+});
+
+const mcChartTraces = computed<PlotlyTrace[]>(() => {
+  if (!monteCarloData.value?.histogram) return [];
+  const histogram = monteCarloData.value.histogram;
+  const xValues = histogram.map((bin: any) => (bin.bin_start + bin.bin_end) / 2);
+  const yValues = histogram.map((bin: any) => bin.count);
+  const histogramTrace: PlotlyTrace = {
+    x: xValues,
+    y: yValues,
+    type: 'bar',
+    name: 'Frequency (MC)',
+    marker: {
+      color: 'rgba(255, 99, 132, 0.5)',
+      line: {
+        color: 'rgba(255, 99, 132, 1)',
+        width: 1
+      }
+    },
+    hovertemplate: 
+      'Price Change: %{x:.1f}%<br>' +
+      'Target Price: ' + formatCurrency(stockPrice.value) + ' → ' + 
+      '%{customdata[2]}<br>' +
+      'Count: %{y}<br>' +
+      'Probability ≤ %{x:.1f}%: %{customdata[0]:.1f}%<br>' +
+      'Probability > %{x:.1f}%: %{customdata[1]:.1f}%<br>' +
+      '<extra></extra>',
+    customdata: xValues.map((x: number, i: number) => {
+      const lessOrEqual = yValues.slice(0, i + 1).reduce((sum, count) => sum + count, 0);
+      const greater = yValues.slice(i).reduce((sum, count) => sum + count, 0);
+      const targetPrice = stockPrice.value * (1 + x / 100);
+      return [
+        (lessOrEqual / mcTotalSamples.value) * 100,
+        (greater / mcTotalSamples.value) * 100,
+        formatCurrency(targetPrice)
+      ];
+    })
+  };
+  // Add marker lines if needed (reuse code from above if desired)
+  return [histogramTrace];
+});
+
+const monteCarloData = ref<any | null>(null);
 </script>
 
 <style scoped>

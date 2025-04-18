@@ -346,6 +346,124 @@ def growthProbability(ticker_id: str, days: int, percent_range: int):
     logger.info(f"growthProbability({ticker_id}) - End")
     return result
 
+@fastApiApp.get("/options/growth_probability_mc/{ticker_id}/{days}/{percent_range}")
+def growth_probability_mc(
+    ticker_id: str,
+    days: int,
+    percent_range: int
+):
+    """
+    Calculate Monte Carlo-based probability of crossing +/-percent_range% over 'days' trading days.
+    Vectorized simulation with barrier check at each step.
+    """
+    n_simulations = 100_000
+    num_bins = 50
+    # Validate inputs
+    if days < 1 or percent_range < 1 or n_simulations < 1:
+        raise HTTPException(status_code=400, detail="'days', 'percent_range' and 'n_simulations' must be positive integers")
+
+    result = {"probabilities": {}, "statistics": {}, "histogram": []}
+    conn = None
+    try:
+        # 1) Load historical prices (last year, ~252 trading days)
+        conn = DB.get_connection_mysql()
+        dao = DAO_TickersData(conn)
+        prices_data = dao.select_ticker_data(
+            ticker_id,
+            TICKERS_TIME_DATA__TYPE__CONST.PRICE,
+            252,
+        )
+        if not prices_data or len(prices_data) < 30:
+            logger.warning(f"Insufficient data for ticker {ticker_id}")
+            return result
+
+        # 2) Prepare sorted price array
+        prices_data.sort(key=lambda x: x.date)
+        prices = np.array([p.value for p in prices_data if p.value is not None])
+        if len(prices) < 2:
+            logger.warning(f"Not enough valid price points for {ticker_id}")
+            return result
+        S0 = prices[-1]
+
+        # 3) Estimate annual drift and volatility
+        returns = np.log(prices[1:] / prices[:-1])
+        mu_annual = returns.mean() * 252
+        sigma_annual = returns.std(ddof=1) * np.sqrt(252)
+        dt = 1 / 252
+        mu_day = mu_annual * dt
+        sigma_day = sigma_annual * np.sqrt(dt)
+
+        # 4) Vectorized Monte Carlo simulation of price paths
+        np.random.seed(42)
+        z = np.random.randn(n_simulations, days)
+        steps = np.exp((mu_day - 0.5 * sigma_day**2) + sigma_day * z)
+        price_paths = S0 * np.cumprod(steps, axis=1)
+
+        # 5) Barrier crossing probabilities
+        K_up = S0 * (1 + percent_range / 100)
+        K_down = S0 * (1 - percent_range / 100)
+        hit_up_pct = np.mean(np.any(price_paths >= K_up, axis=1)) * 100
+        hit_down_pct = np.mean(np.any(price_paths <= K_down, axis=1)) * 100
+
+        result["probabilities"] = {
+            f"+{percent_range}%": round(hit_up_pct, 2),
+            f"-{percent_range}%": round(hit_down_pct, 2),
+        }
+
+        # 6) Final price changes and statistics
+        final_changes = (price_paths[:, -1] - S0) / S0 * 100
+        mean_val = final_changes.mean()
+        sd_val = final_changes.std(ddof=0)
+
+        result["statistics"] = {
+            "simulations": n_simulations,
+            "mean": round(mean_val, 2),
+            "std": round(sd_val, 2),
+            "min": round(final_changes.min(), 2),
+            "max": round(final_changes.max(), 2),
+        }
+
+        # 7) Build histogram with statistical markers
+        df = pd.DataFrame({"pct_change": final_changes})
+        hist = (
+            df["pct_change"]
+            .value_counts(bins=num_bins, sort=False)
+            .sort_index()
+            .reset_index()
+        )
+        hist.columns = ["interval", "count"]
+
+        for _, row in hist.iterrows():
+            interval = row["interval"]
+            markers = []
+            if interval.left <= mean_val < interval.right:
+                markers.append("MEAN")
+            if interval.left <= mean_val - sd_val < interval.right:
+                markers.append("-1SD")
+            if interval.left <= mean_val + sd_val < interval.right:
+                markers.append("+1SD")
+            if interval.left <= mean_val - 2 * sd_val < interval.right:
+                markers.append("-2SD")
+            if interval.left <= mean_val + 2 * sd_val < interval.right:
+                markers.append("+2SD")
+
+            result["histogram"].append({
+                "bin_start": round(interval.left, 2),
+                "bin_end": round(interval.right, 2),
+                "count": int(row["count"]),
+                "markers": markers,
+            })
+
+    except Exception as e:
+        logger.error(f"Error in growth_probability_mc({ticker_id}): {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
+            logger.debug("Database connection closed")
+
+    return result
+
 @fastApiApp.get("/stock/current_price/{ticker_id}")
 def get_current_price(ticker_id: str):
     """

@@ -57,6 +57,22 @@ export const getGrowthProbability = async (
     }
 };
 
+export const getGrowthProbabilityMonteCarlo = async (
+  tickerId: string,
+  days: number = 30,
+  percentRange: number = 20
+): Promise<any> => {
+  try {
+    const response = await axios.get<any>(
+      `${BASE_URL}/options/growth_probability_mc/${tickerId}/${days}/${percentRange}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching Monte Carlo growth probability:', error);
+    throw error;
+  }
+};
+
 export const getOptionChain = async (
   tickerId: string,
   expiration: string,

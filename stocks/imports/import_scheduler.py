@@ -230,7 +230,15 @@ def download_prices(input_ticker_id_list=None):
                     continue
 
             try:
-                prices = fmp.get_historic_prices(ticker_id, fromDay, today)
+                yf_ticker = yf.Ticker(ticker_id)
+                hist = yf_ticker.history(start=fromDay, end=today)
+                prices = []
+                for idx, row in hist.iterrows():
+                    prices.append({
+                        'date': idx.strftime("%Y-%m-%d"),
+                        'adjClose': row['Close'],
+                        'volume': row['Volume']
+                    })
             except:
                 prices = None
 
@@ -2132,7 +2140,7 @@ def start_import_schedulers():
             scheduler.add_job(update_stock_recommendations, 'cron',day_of_week='tue-sat', hour=0, minute=30)
             scheduler.add_job(update_stock_predictions, 'cron',day_of_week='sat', hour=3, minute=30)
             scheduler.add_job(downloadStockOptionData, 'cron',day_of_week='tue-sat', hour=0, minute=30)
-            scheduler.add_job(download_fundamental_statements, 'cron',day_of_week='tue-sat', hour=6, minute=30)
+            scheduler.add_job(download_fundamental_statements, 'cron', day_of_week='wed,sat', hour=6, minute=30)
 
             scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
             scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=12, minute=30)
