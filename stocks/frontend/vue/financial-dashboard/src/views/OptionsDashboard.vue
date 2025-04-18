@@ -115,7 +115,7 @@
                   <tr>
                     <th>Strike</th>
                     <th>Premium %</th>
-                    <th>Last</th>
+                                        <th>Last</th>
                     <th>Bid</th>
                     <th>Ask</th>
                     <th>Volume</th>
@@ -133,7 +133,7 @@
                     }">
                     <td>{{ formatCurrency(option.strike) }}</td>
                     <td>{{ calculatePremiumPercent(option.bid, option.strike) }}%</td>
-                    <td>{{ formatCurrency(option.last_price) }}</td>
+                                        <td>{{ formatCurrency(option.last_price) }}</td>
                     <td>{{ formatCurrency(option.bid) }}</td>
                     <td>{{ formatCurrency(option.ask) }}</td>
                     <td>{{ formatNumber(option.volume) }}</td>
@@ -156,7 +156,7 @@
                   <tr>
                     <th>Strike</th>
                     <th>Premium %</th>
-                    <th>Last</th>
+                                        <th>Last</th>
                     <th>Bid</th>
                     <th>Ask</th>
                     <th>Volume</th>
@@ -174,7 +174,7 @@
                     }">
                     <td>{{ formatCurrency(option.strike) }}</td>
                     <td>{{ calculatePremiumPercent(option.bid, option.strike) }}%</td>
-                    <td>{{ formatCurrency(option.last_price) }}</td>
+                                        <td>{{ formatCurrency(option.last_price) }}</td>
                     <td>{{ formatCurrency(option.bid) }}</td>
                     <td>{{ formatCurrency(option.ask) }}</td>
                     <td>{{ formatNumber(option.volume) }}</td>

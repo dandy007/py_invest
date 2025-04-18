@@ -142,39 +142,31 @@ def get_expirations(ticker_id: str):
 @fastApiApp.get("/options/get_chain/{ticker_id}/{expiration}/{option_type}")
 def get_chain(ticker_id: str, expiration: str, option_type: str):
     """
-    Retrieves option chain data for a given stock ticker, expiration date and option type.
-    Returns the option chain data in the following structure:
-
-    {
-        "expiration": "2023-10-20",
-        "option_type": "call",
-        "option_chain": [
-            {
-                "strike": 150.0,
-                "last_price": 5.0,
-                "bid": 4.5,
-                "ask": 5.5,
-                "volume": 100,
-                "open_interest": 200
-            },
-            ...
-        ]
-    }
-
-    Args:
-        ticker_id: The stock ticker symbol
-        expiration: The expiration date of the options (YYYY-MM-DD)
-        option_type: The type of option (call/put/both)
-
-    Returns:
-        JSON response containing the option chain data for all strikes
+    Retrieves option chain data with fair premium calculations based on Monte Carlo simulations.
     """
     logger.info(f"get_chain({ticker_id}, {expiration}, {option_type}) - Start")
     try:
+        # Get current price first
         stock = yf.Ticker(ticker_id)
+        current_price = stock.info.get('regularMarketPrice')
+        if current_price is None:
+            raise HTTPException(status_code=404, detail="Price data not available")
+
+        # Calculate days until expiration
         exp_date = datetime.strptime(expiration, '%Y-%m-%d').date()
+        days_until_exp = (exp_date - datetime.now().date()).days
         
-        # Get option chain for the specified expiration
+        # Get Monte Carlo simulation data for this timeframe
+        mc_result = growth_probability_mc(ticker_id, days_until_exp, 200)  # Use 100% range to catch all changes
+        
+        # Extract the percentage changes from MC simulation
+        changes_pct = []
+        for hist in mc_result["histogram"]:
+            bin_mid = (hist["bin_start"] + hist["bin_end"]) / 2
+            changes_pct.extend([bin_mid] * hist["count"])
+        final_changes = np.array(changes_pct)
+        
+        # Get option chain data
         opt = stock.option_chain(expiration)
         
         result = {
@@ -195,19 +187,44 @@ def get_chain(ticker_id: str, expiration: str, option_type: str):
         # Process each chain
         for chain in chains:
             for _, row in chain.iterrows():
-                result["option_chain"].append({
-                    "strike": float(row['strike']) if np.isfinite(row['strike']) else None,
-                    "last_price": float(row['lastPrice']) if np.isfinite(row['lastPrice']) else None,
-                    "bid": float(row['bid']) if np.isfinite(row['bid']) else None,
-                    "ask": float(row['ask']) if np.isfinite(row['ask']) else None,
-                    "volume": int(row['volume']) if not pd.isna(row['volume']) else 0,
-                    "open_interest": int(row['openInterest']) if not pd.isna(row['openInterest']) else 0
-                })
+                strike_price = float(row['strike']) if np.isfinite(row['strike']) else None
+                if strike_price is not None:
+                    # Calculate strike percentage from current price
+                    strike_pct = ((strike_price - current_price) / current_price) * 100
+                    
+                    # Calculate fair premium
+                    if option_type.lower() == 'call' or (option_type.lower() == 'both' and strike_price > current_price):
+                        mask = final_changes >= strike_pct
+                        overshoots = final_changes[mask] - strike_pct
+                        if len(overshoots) == 0:
+                            fair_premium = 0.0
+                        else:
+                            avg_overshoot_pct = overshoots.mean()
+                            fair_premium = current_price * avg_overshoot_pct / 100
+                    else:  # Put option
+                        mask = final_changes <= -strike_pct
+                        overshoots = (-final_changes[mask]) - strike_pct
+                        if len(overshoots) == 0:
+                            fair_premium = 0.0
+                        else:
+                            avg_overshoot_pct = overshoots.mean()
+                            fair_premium = current_price * avg_overshoot_pct / 100
+
+                    result["option_chain"].append({
+                        "strike": strike_price,
+                        "last_price": float(row['lastPrice']) if np.isfinite(row['lastPrice']) else None,
+                        "bid": float(row['bid']) if np.isfinite(row['bid']) else None,
+                        "ask": float(row['ask']) if np.isfinite(row['ask']) else None,
+                        "volume": int(row['volume']) if not pd.isna(row['volume']) else 0,
+                        "open_interest": int(row['openInterest']) if not pd.isna(row['openInterest']) else 0,
+                        "fair_premium": round(fair_premium, 2)
+                    })
         
         return result
 
     except Exception as e:
         logger.error(f"Error fetching option chain: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to fetch option data")
 
 @fastApiApp.get("/options/growth_probability/{ticker_id}/{days}/{percent_range}")

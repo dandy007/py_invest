@@ -61,9 +61,9 @@ export const getGrowthProbabilityMonteCarlo = async (
   tickerId: string,
   days: number = 30,
   percentRange: number = 20
-): Promise<any> => {
+): Promise<GrowthProbabilityResponse> => {
   try {
-    const response = await axios.get<any>(
+    const response = await axios.get<GrowthProbabilityResponse>(
       `${BASE_URL}/options/growth_probability_mc/${tickerId}/${days}/${percentRange}`
     );
     return response.data;
