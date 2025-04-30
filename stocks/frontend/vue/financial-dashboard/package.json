@@ -12,6 +12,8 @@
     "axios": "^1.8.4",
     "plotly.js": "^2.33.0", 
     "vue": "^3.5.13",
+    "pinia": "^2.1.7",
+    "vue-router": "^4.2.5",
     "buffer": "^6.0.3",
     "readable-stream": "^4.5.2"
   },

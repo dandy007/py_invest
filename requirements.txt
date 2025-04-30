@@ -12,3 +12,5 @@ fmpsdk
 statsmodels
 pybit
 lxml
+fastapi
+uvicorn
