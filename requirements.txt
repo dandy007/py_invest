@@ -11,3 +11,4 @@ plotly
 fmpsdk
 statsmodels
 pybit
+lxml
