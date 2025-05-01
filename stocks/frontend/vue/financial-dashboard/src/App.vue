@@ -7,6 +7,7 @@
       <nav class="sidebar">
         <router-link to="/stocks" class="nav-item">Stock Info</router-link>
         <router-link to="/options" class="nav-item">Option Info</router-link>
+        <router-link to="/screeners" class="nav-item">Screeners</router-link>
       </nav>
       <main>
         <router-view />

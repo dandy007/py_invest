@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import StockDashboard from '../views/StockDashboard.vue'
 import OptionsDashboard from '../views/OptionsDashboard.vue'
+import Screeners from '../views/Screeners.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -18,6 +19,11 @@ const router = createRouter({
       path: '/options',
       name: 'options',
       component: OptionsDashboard
+    },
+    {
+      path: '/screeners',
+      name: 'screeners',
+      component: Screeners
     }
   ]
 })
