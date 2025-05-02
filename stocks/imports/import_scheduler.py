@@ -1247,6 +1247,7 @@ def calc_valuation_ratios_stocks(input_ticker_id_list=None):
                                     pe.value = price.value / eps_value
                                 else:
                                     pe.value = 0
+                                pe.value = max(0, pe.value)
                                 if len(last_record) == 0 or last_record[-1].date < pe.date:
                                     pe_list_q.append(pe)
                                 break
@@ -1282,6 +1283,7 @@ def calc_valuation_ratios_stocks(input_ticker_id_list=None):
                                     ps.value = price.value / (rev_value / shares)
                                 else:
                                     ps.value = 0
+                                ps.value = max(0, ps.value)
                                 if len(last_record) == 0 or last_record[-1].date < ps.date:
                                     ps_list_q.append(ps)
                                 break
@@ -1318,6 +1320,7 @@ def calc_valuation_ratios_stocks(input_ticker_id_list=None):
                                     pb.value = price.value / (book_value / shares)
                                 else:
                                     pb.value = 0
+                                pb.value = max(0, pb.value)
                                 if len(last_record) == 0 or last_record[-1].date < pb.date:
                                     pb_list_q.append(pb)
                                 break
@@ -1354,6 +1357,7 @@ def calc_valuation_ratios_stocks(input_ticker_id_list=None):
                                     pfcf.value = price.value / (fcf_value / shares)
                                 else:
                                     pfcf.value = 0
+                                pfcf.value = max(0, pfcf.value)
                                 if len(last_record) == 0 or last_record[-1].date < pfcf.date:
                                     pfcf_list_q.append(pfcf)
                                 break
@@ -2172,12 +2176,12 @@ def start_import_schedulers():
             #calculate_price_discount()
             #calc_valuation_ratios_stocks()
             #calc_valuation_stocks()
-            #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
-            #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
-            #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
-            #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
+            calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
+            calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
+            calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
+            calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
             #analyze_option_sentiment()
-            #calc_ratio_discounts()
+            calc_ratio_discounts()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
             
             pass
