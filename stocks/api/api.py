@@ -5,6 +5,8 @@ from stocks.db.db import DB
 from stocks.db.dao_tickers import DAO_Tickers
 from stocks.db.dao_tickers_data import DAO_TickersData
 from stocks.db.constants import TICKERS_TIME_DATA__TYPE__CONST
+from stocks.imports.import_scheduler import resetAfterSplit
+from stocks.data_providers.fmp import FMP
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import timedelta, datetime
 from stocks.db.row_tickers_data import ROW_TickersData
@@ -502,8 +504,11 @@ def get_current_price(ticker_id: str):
     """
     logger.info(f"get_current_price({ticker_id}) - Start")
     try:
-        stock = yf.Ticker(ticker_id)
-        current_price = stock.info.get('regularMarketPrice')
+        #stock = yf.Ticker(ticker_id)
+        fmp = FMP()
+        today = datetime.now().strftime("%Y-%m-%d")
+        prices_raw = fmp.get_historic_prices(ticker_id, today, today)
+        current_price = prices_raw[0]['price']
         if current_price is None:
             raise HTTPException(status_code=404, detail="Price data not available")
             
@@ -514,7 +519,16 @@ def get_current_price(ticker_id: str):
         }
     except Exception as e:
         logger.error(f"Error fetching current price: {str(e)}")
+        return {
+            "ticker_id": ticker_id,
+            "price": 0.0,
+            "timestamp": datetime.now().isoformat()
+        }
         raise HTTPException(status_code=500, detail="Failed to fetch price data")
+
+@fastApiApp.get("/stock/reset/{ticker_id}")
+def reset(ticker_id: str):
+    resetAfterSplit({ticker_id})
 
 @fastApiApp.get("/stock/{ticker_id}")
 def get_stock(ticker_id: str):
@@ -616,8 +630,8 @@ def get_stock(ticker_id: str):
 
     # Valuation charts - PE, PS, PB, PFCF - each have separate chart
     data['PE'] = prepared_chart_data__pe
-    data['PS'] = prepared_chart_data__pb
-    data['PB'] = prepared_chart_data__ps
+    data['PB'] = prepared_chart_data__pb
+    data['PS'] = prepared_chart_data__ps
     data['PFCF'] = prepared_chart_data__pfcf
 
     # Income statement chart

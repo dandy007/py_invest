@@ -75,8 +75,17 @@ class FMP:
     def get_cash_flow_statement(self, ticker_id: str, quaterly: bool):
         return fmpsdk.cash_flow_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', 100)
     
+    #def get_historic_prices(self, ticker_id: str, from_date: str, to_date: str):
+    #    return fmpsdk.historical_price_full(os.getenv("FMP_API_KEY"), ticker_id, from_date, to_date)
+    
     def get_historic_prices(self, ticker_id: str, from_date: str, to_date: str):
-        return fmpsdk.historical_price_full(os.getenv("FMP_API_KEY"), ticker_id, from_date, to_date)
+        url = f'https://financialmodelingprep.com/stable/historical-price-eod/light?symbol={ticker_id}&from={from_date}&to={to_date}&apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
+
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
     
     def get_key_metrics_ttm(self, ticker_id: str):
         return fmpsdk.key_metrics_ttm(os.getenv("FMP_API_KEY"), ticker_id, 100)

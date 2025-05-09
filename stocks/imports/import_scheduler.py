@@ -230,15 +230,17 @@ def download_prices(input_ticker_id_list=None):
                     continue
 
             try:
-                yf_ticker = yf.Ticker(ticker_id)
-                hist = yf_ticker.history(start=fromDay, end=today)
+                prices_raw = fmp.get_historic_prices(ticker_id, fromDay, today)
+
+                #yf_ticker = yf.Ticker(ticker_id)
                 prices = []
-                for idx, row in hist.iterrows():
-                    prices.append({
-                        'date': idx.strftime("%Y-%m-%d"),
-                        'adjClose': row['Close'],
-                        'volume': row['Volume']
-                    })
+                if prices != None:
+                    for record in prices_raw:
+                        prices.append({
+                            'date': record['date'],
+                            'adjClose': record['price'],
+                            'volume': record['volume']
+                        })
             except:
                 prices = None
 
@@ -2176,12 +2178,12 @@ def start_import_schedulers():
             #calculate_price_discount()
             #calc_valuation_ratios_stocks()
             #calc_valuation_stocks()
-            calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
-            calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
-            calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
-            calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
+            #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
+            #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
+            #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS)
+            #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
             #analyze_option_sentiment()
-            calc_ratio_discounts()
+            #calc_ratio_discounts()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
             
             pass

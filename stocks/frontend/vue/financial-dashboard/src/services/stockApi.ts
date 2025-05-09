@@ -39,3 +39,19 @@ export async function getCurrentPrice(tickerId: string): Promise<CurrentPriceRes
     throw error;
   }
 }
+
+export async function resetStockData(tickerId: string): Promise<void> {
+  if (!tickerId) {
+    throw new Error('Ticker ID cannot be empty');
+  }
+  try {
+    await axios.get(`${API_BASE_URL}/stock/reset/${tickerId}`);
+  } catch (error) {
+    console.error(`Error resetting stock data for ${tickerId}:`, error);
+    if (axios.isAxiosError(error)) {
+      throw new Error(`API Error: ${error.response?.statusText || error.message}`);
+    } else {
+      throw new Error(`An unexpected error occurred: ${error}`);
+    }
+  }
+}

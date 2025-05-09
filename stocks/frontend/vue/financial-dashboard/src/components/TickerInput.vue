@@ -47,19 +47,21 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 20px;
-    padding: 10px;
     background-color: #f9f9f9;
     border-radius: 5px;
+    padding: 8px;
   }
   .ticker-input label {
     font-weight: bold;
+    margin: 0;
   }
   .ticker-input input {
     padding: 8px;
     border: 1px solid #ccc;
     border-radius: 4px;
-    flex-grow: 1; /* Allow input to take available space */
+    flex-grow: 1;
+    height: 36px;
+    box-sizing: border-box;
   }
   .ticker-input button {
     padding: 8px 15px;
@@ -69,6 +71,8 @@
     border-radius: 4px;
     cursor: pointer;
     transition: background-color 0.2s;
+    height: 36px;
+    box-sizing: border-box;
   }
   .ticker-input button:hover {
     background-color: #0056b3;

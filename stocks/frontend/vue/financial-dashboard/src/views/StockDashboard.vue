@@ -1,6 +1,29 @@
 <template>
     <div class="stock-dashboard">
-      <TickerInput v-model="tickerId" @loadTicker="loadStockData" />
+      <div class="header-controls">
+        <div class="input-group">
+          <TickerInput v-model="tickerId" @loadTicker="loadStockData" />
+          <button 
+            class="reset-button" 
+            @click="showResetConfirmation" 
+            :disabled="!tickerId || loading || resetLoading"
+          >
+            {{ resetLoading ? 'Resetting...' : 'Reset Data' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Reset Confirmation Dialog -->
+      <div v-if="showConfirmDialog" class="dialog-overlay">
+        <div class="dialog-content">
+          <h3>Confirm Reset</h3>
+          <p>Are you sure you want to reset data for {{ tickerId }}?<br>This action cannot be undone.</p>
+          <div class="dialog-buttons">
+            <button class="cancel-button" @click="showConfirmDialog = false">Cancel</button>
+            <button class="confirm-button" @click="handleReset">Reset</button>
+          </div>
+        </div>
+      </div>
   
       <div v-if="loading" class="loading">Loading data for {{ tickerId }}...</div>
       <div v-if="error" class="error">{{ error }}</div>
@@ -146,7 +169,7 @@
   import { useTickerStore } from '@/stores/tickerStore';
   import TickerInput from '@/components/TickerInput.vue';
   import BaseChart from '@/components/BaseChart.vue';
-  import { fetchStockDataById, getCurrentPrice } from '@/services/stockApi';
+  import { fetchStockDataById, getCurrentPrice, resetStockData } from '@/services/stockApi';
   import { calculateCAGR, estimateYears } from '@/utils/cagr';
   import { formatLargeNumber, formatPercentage, formatCurrency } from '@/utils/formatters';
   import type { StockData, ChartData, PlotlyTrace } from '@/types/stock';
@@ -157,6 +180,8 @@
   const loading = ref<boolean>(false);
   const error = ref<string | null>(null);
   const priceRefreshInterval = ref<number | null>(null);
+  const resetLoading = ref<boolean>(false);
+  const showConfirmDialog = ref<boolean>(false);
   
   // Initialize state once component is mounted
   onMounted(() => {
@@ -502,6 +527,28 @@
       loading.value = false;
     }
   };
+
+  const showResetConfirmation = () => {
+    showConfirmDialog.value = true;
+  };
+
+  const handleReset = async () => {
+    if (!tickerId.value || resetLoading.value) return;
+    
+    showConfirmDialog.value = false; // Close dialog
+    resetLoading.value = true;
+    error.value = null;
+    
+    try {
+      await resetStockData(tickerId.value);
+      // Reload the data after reset
+      await loadStockData(tickerId.value);
+    } catch (err: any) {
+      error.value = `Failed to reset data: ${err.message}`;
+    } finally {
+      resetLoading.value = false;
+    }
+  };
   
   // Watch for store changes from other components
   watch(() => tickerStore.currentTicker, (newTicker) => {
@@ -642,6 +689,107 @@
         flex-direction: column;
         align-items: stretch;
     }
+  }
+
+  .header-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 0;
+  }
+
+  .input-group {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    flex-wrap: nowrap;
+  }
+  
+  .reset-button {
+    padding: 8px 15px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    min-width: 100px;
+    height: 52px; /* Match TickerInput total height (36px + 2*8px padding) */
+    box-sizing: border-box;
+  }
+  
+  .reset-button:hover:not(:disabled) {
+    background-color: #c82333;
+  }
+  
+  .reset-button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.65;
+  }
+
+  .dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+  
+  .dialog-content {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    min-width: 300px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  }
+  
+  .dialog-content h3 {
+    margin-top: 0;
+    color: #333;
+  }
+  
+  .dialog-content p {
+    color: #666;
+    margin: 15px 0;
+  }
+  
+  .dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  
+  .cancel-button {
+    padding: 8px 15px;
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .cancel-button:hover {
+    background-color: #5a6268;
+  }
+  
+  .confirm-button {
+    padding: 8px 15px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .confirm-button:hover {
+    background-color: #c82333;
   }
   
   </style>
