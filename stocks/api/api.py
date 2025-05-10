@@ -507,8 +507,15 @@ def get_current_price(ticker_id: str):
         #stock = yf.Ticker(ticker_id)
         fmp = FMP()
         today = datetime.now().strftime("%Y-%m-%d")
+
         prices_raw = fmp.get_historic_prices(ticker_id, today, today)
-        current_price = prices_raw[0]['price']
+        if len(prices_raw) == 0:
+            connection = DB.get_connection_mysql()
+            dao_tickers = DAO_Tickers(connection)
+            ticker_data = dao_tickers.select_ticker(ticker_id)
+            current_price = ticker_data.price
+        else:
+            current_price = prices_raw[0]['price']
         if current_price is None:
             raise HTTPException(status_code=404, detail="Price data not available")
             
