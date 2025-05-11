@@ -2131,6 +2131,68 @@ def growthProbability(ticker_id: str, days: int, percent_range: int):
             logger.debug("Database connection closed.")
     logger.info(f"growthProbability({ticker_id}) - End")
 
+def calc_margin_growth():
+    logger.info("calc_margin_growth - Start")
+    try:
+        connection = DB.get_connection_mysql()
+        dao_tickers = DAO_Tickers(connection)
+        dao_tickers_data = DAO_TickersData(connection)
+
+        db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
+
+        counter = 0
+        for ticker_id in db_ticker_list:
+            counter += 1
+            logger.info(f"calc_margin_growth - {ticker_id} {counter}/{len(db_ticker_list)}")
+
+            years = 5
+            gross_margin_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT_MARGIN_Q, years * 4)
+            operating_margin_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPERATING_INCOME_MARGIN_Q, years * 4)
+            ebitda_margin_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA_MARGIN_Q, years * 4)
+            net_margin_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_MARGIN_Q, years * 4)
+
+            # Skip if not enough data
+            if len(gross_margin_list) < 4 or len(operating_margin_list) < 4 or len(ebitda_margin_list) < 4 or len(net_margin_list) < 4:
+                continue
+
+            # Calculate average margins for each quarter
+            avg_margins = []
+            min_length = min(len(gross_margin_list), len(operating_margin_list), 
+                           len(ebitda_margin_list), len(net_margin_list))
+            for i in range(min_length):
+                quarter_avg = (
+                    gross_margin_list[i].value + 
+                    operating_margin_list[i].value + 
+                    ebitda_margin_list[i].value + 
+                    net_margin_list[i].value
+                ) / 4
+                row = ROW_TickersData()
+                row.date = gross_margin_list[i].date
+                row.value = quarter_avg
+                row.ticker_id = ticker_id
+                avg_margins.append(row)
+            # Sort by date ascending
+            avg_margins.sort(key=lambda x: x.date)
+            
+            # Calculate CAGR if we have data
+            if len(avg_margins) >= 2:
+                start_value = avg_margins[0].value
+                end_value = avg_margins[-1].value
+                years = (avg_margins[-1].date - avg_margins[0].date).days / 365.25
+                
+                if start_value > 0 and years > 0:  # Avoid division by zero
+                    margin_cagr = ((end_value / start_value) ** (1/years) - 1) * 100
+                    
+                    dict_data = {
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__MARGINS_GROWTH: margin_cagr
+                    }
+                    dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+
+    except Exception as e:
+        logger.error(f"calc_margin_growth - Error {e}")
+        traceback.print_exc()
+    logger.info("calc_margin_growth - End")
+
 def start_import_schedulers():
         #scheduler.add_job(notify_earnings, 'cron', second='*/10')
 
@@ -2152,6 +2214,7 @@ def start_import_schedulers():
             scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=12, minute=30)
             scheduler.add_job(calc_valuation_ratios_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
             scheduler.add_job(calc_valuation_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+            scheduler.add_job(calc_margin_growth, 'cron',day_of_week='tue-sat', hour=12, minute=30)
 
             scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS])
             scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
@@ -2177,6 +2240,7 @@ def start_import_schedulers():
             #estimate_growth_stocks()
             #calculate_price_discount()
             #calc_valuation_ratios_stocks()
+            #calc_margin_growth()
             #calc_valuation_stocks()
             #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS)
             #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS)
