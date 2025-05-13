@@ -257,16 +257,32 @@ interface ChartLayout {
     type?: 'date';
     range?: number[];
     fixedrange?: boolean;
+    automargin?: boolean;
   };
   yaxis: {
     title: string;
     gridcolor: string;
     tickformat?: string;
+    fixedrange?: boolean;
+    automargin?: boolean;
+    range?: number[];
   };
   height?: number;
   margin?: {
     t: number;
     b: number;
+    l?: number;
+    r?: number;
+  };
+  plot_bgcolor?: string;
+  paper_bgcolor?: string;
+  autosize?: boolean;
+  title?: {
+    y?: number;
+    yanchor?: string;
+    pad?: {
+      t: number;
+    };
   };
 }
 
@@ -291,16 +307,30 @@ const ivChartLayout = ref<ChartLayout>({
     title: 'Date',
     gridcolor: '#e0e0e0',
     type: 'date',
-    fixedrange: true
+    fixedrange: true,
+    automargin: true
   },
   yaxis: {
     title: 'Implied Volatility',
-    gridcolor: '#e0e0e0',
-    tickformat: '.1%',
-    fixedrange: true
+    gridcolor: '#e0e0e0',    tickformat: '.1%',
+    fixedrange: true,
+    automargin: true,
+    range: [0, 1] // Default range 0-100%, will be adjusted dynamically
+  },  height: 500, // Keep the height
+  margin: { 
+    t: 100,  // Significantly increased top margin to ensure title is fully visible
+    b: 50,  // Bottom margin for x-axis labels
+    l: 60,  // Left margin for y-axis labels
+    r: 30   // Right margin
   },
-  height: 300,
-  margin: { t: 50, b: 50 }
+  plot_bgcolor: '#ffffff',
+  paper_bgcolor: '#ffffff',
+  autosize: true,
+  title: {
+    y: 1,     // Move title to top
+    yanchor: 'bottom',
+    pad: { t: 20 }  // Add padding above title
+  }
 });
 
 // Update watchEffect to handle layout updates
@@ -359,6 +389,14 @@ const ivChartTraces = computed<PlotlyTrace[]>(() => {
   }
 
   const [dates, values] = ivData.value;
+  
+  // Update chart y-axis range based on max volatility
+  const maxVolatility = Math.max(...values.map(v => Number(v) || 0));
+  if (maxVolatility > 0) {
+    // Add 10% padding to the max value and round to nearest 0.1
+    const yAxisMax = Math.ceil((maxVolatility * 1.1) * 10) / 10;
+    ivChartLayout.value.yaxis.range = [0, yAxisMax];
+  }
   
   if (!dates.length || !values.length) {
     console.log('IV data arrays are empty');
@@ -1069,12 +1107,14 @@ watch(
 /* Add after other styles */
 .iv-chart-container {
   position: relative;
-  min-height: 300px;
+  min-height: 500px;
   background-color: white;
-  padding: 15px 20px;
+  padding: 30px 25px 20px; /* Increased top padding */
   border-radius: 5px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   margin: 20px 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .loading-overlay {
@@ -1092,5 +1132,12 @@ watch(
   color: #666;
   backdrop-filter: blur(2px);
   border-radius: 5px;
+}
+
+/* Add after other styles */
+.chart-card {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
 }
 </style>
