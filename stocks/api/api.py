@@ -533,6 +533,55 @@ def get_current_price(ticker_id: str):
         }
         raise HTTPException(status_code=500, detail="Failed to fetch price data")
 
+@fastApiApp.get("/options/get_iv/{ticker_id}/{expiration}/{strike}")
+def get_implied_volatility(ticker_id: str, expiration: str, strike: float):
+    """
+    Retrieves historical implied volatility data for a specific option.
+    
+    Args:
+        ticker_id: The stock ticker symbol
+        expiration: Option expiration date in YYYY-MM-DD format
+        strike: Option strike price
+        
+    Returns:
+        List of [dates, IV values] for charting
+    """
+    logger.info(f"get_implied_volatility({ticker_id}, {expiration}, {strike}) - Start")
+    
+    connection = None
+    try:
+        connection = DB.get_connection_mysql()
+        cursor = connection.cursor()
+        
+        query = """
+            SELECT last_trade_date, iv 
+            FROM options 
+            WHERE ticker_id = %s 
+            AND expiration = %s 
+            AND strike = %s 
+            AND type = 'C'
+            ORDER BY last_trade_date ASC
+        """
+        
+        cursor.execute(query, (ticker_id, expiration, strike))
+        results = cursor.fetchall()
+        
+        dates = []
+        ivs = []
+        
+        for row in results:
+            dates.append(row[0])
+            ivs.append(float(row[1]) if row[1] is not None else None)
+            
+        return [dates, ivs]
+        
+    except Exception as e:
+        logger.error(f"Error fetching implied volatility data: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch implied volatility data")
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
 @fastApiApp.get("/stock/reset/{ticker_id}")
 def reset(ticker_id: str):
     resetAfterSplit({ticker_id})

@@ -41,6 +41,8 @@ interface ExpirationDatesResponse {
   expiration_dates: string[];
 }
 
+export type ImpliedVolatilityResponse = [string[], number[]]; // [dates, iv_values]
+
 export const getGrowthProbability = async (
     tickerId: string, 
     days: number = 30, 
@@ -97,6 +99,21 @@ export const getExpirationDates = async (tickerId: string): Promise<string[]> =>
     return response.data.expiration_dates;
   } catch (error) {
     console.error('Error fetching expiration dates:', error);
+    throw error;
+  }
+};
+
+export const getImpliedVolatility = async (
+  tickerId: string,
+  expiration: string,
+  strike: number
+): Promise<[string[], number[]]> => {
+  try {    const response = await axios.get<ImpliedVolatilityResponse>(
+      `${BASE_URL}/options/get_iv/${tickerId}/${expiration}/${strike}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching implied volatility:', error);
     throw error;
   }
 };

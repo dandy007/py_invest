@@ -52,7 +52,32 @@
         chartId="histogram-chart"
         :title="`Price Change Distribution (${days} Days) - Total Samples: ${totalSamples.toLocaleString()}`"
         :traces="chartTraces"
-        :layoutOptions="chartLayout"      />
+        :layoutOptions="chartLayout"
+      />
+
+      <!-- Implied Volatility Chart -->
+      <div class="iv-chart-container card">
+        <div v-if="ivLoading" class="loading-overlay">
+          Loading implied volatility data...
+        </div>
+        <div v-else-if="!selectedExpiration" class="loading-overlay">
+          Select an expiration date to view implied volatility data
+        </div>
+        <div v-else-if="!nearestStrike" class="loading-overlay">
+          Calculating nearest strike price...
+        </div>
+        <div v-else-if="!ivData || !ivChartTraces.length" class="loading-overlay">
+          No implied volatility data available
+        </div>
+        <BaseChart
+          v-else
+          chartId="iv-chart"
+          :title="`Implied Volatility History (Strike: ${formatCurrency(nearestStrike)})`"
+          :traces="ivChartTraces"
+          :layoutOptions="ivChartLayout"
+          class="chart-card"
+        />
+      </div>
 
       <!-- Statistics -->
       <div v-if="optionsData.statistics" class="statistics card">
@@ -181,15 +206,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
+import { ref, computed, onMounted, watch, onUnmounted, watchEffect } from 'vue';
 import { useTickerStore } from '@/stores/tickerStore';
 import TickerInput from '@/components/TickerInput.vue';
 import BaseChart from '@/components/BaseChart.vue';
 import { formatCurrency } from '@/utils/formatters';
-import { getGrowthProbability, getOptionChain, getExpirationDates } from '@/services/optionsApi';
+import { getGrowthProbability, getOptionChain, getExpirationDates, getImpliedVolatility } from '@/services/optionsApi';
 import type { OptionChainItem } from '@/services/optionsApi';
 import { getCurrentPrice, fetchStockDataById } from '@/services/stockApi';
-import type { PlotlyTrace } from '@/types/stock';
+import type { PlotlyTrace } from '@/types/chart';
 import type { StockData } from '@/types/stock';
 
 // State
@@ -200,6 +225,8 @@ const loading = ref<boolean>(false);
 const error = ref<string | null>(null);
 const stockPrice = ref<number>(0);
 const stockInfo = ref<StockData | null>(null);
+const ivData = ref<[string[], number[]] | null>(null);
+const ivLoading = ref<boolean>(false);
 
 // Initialize histogram settings from store with defaults in case store isn't ready
 const days = ref<number>(30);
@@ -221,94 +248,184 @@ const totalSamples = computed(() => {
   return yValues.reduce((sum, count) => sum + count, 0);
 });
 
-// Chart configuration
+// Chart types
+interface ChartLayout {
+  showlegend: boolean;
+  xaxis: {
+    title: string;
+    gridcolor: string;
+    type?: 'date';
+    range?: number[];
+    fixedrange?: boolean;
+  };
+  yaxis: {
+    title: string;
+    gridcolor: string;
+    tickformat?: string;
+  };
+  height?: number;
+  margin?: {
+    t: number;
+    b: number;
+  };
+}
+
+// State
+const chartLayout = ref<ChartLayout>({
+  showlegend: true,
+  xaxis: {
+    title: 'Price Change (%)',
+    gridcolor: '#e0e0e0',
+    range: [-20, 20],
+    fixedrange: true
+  },
+  yaxis: {
+    title: 'Frequency',
+    gridcolor: '#e0e0e0'
+  }
+});
+
+const ivChartLayout = ref<ChartLayout>({
+  showlegend: true,
+  xaxis: {
+    title: 'Date',
+    gridcolor: '#e0e0e0',
+    type: 'date',
+    fixedrange: true
+  },
+  yaxis: {
+    title: 'Implied Volatility',
+    gridcolor: '#e0e0e0',
+    tickformat: '.1%',
+    fixedrange: true
+  },
+  height: 300,
+  margin: { t: 50, b: 50 }
+});
+
+// Update watchEffect to handle layout updates
+watchEffect(() => {
+  if (percentRange.value) {
+    chartLayout.value.xaxis.range = [-percentRange.value, percentRange.value];
+  }
+});
+
 const chartTraces = computed<PlotlyTrace[]>(() => {
   if (!optionsData.value?.histogram) return [];
 
   const histogram = optionsData.value.histogram;
   const xValues = histogram.map((bin: any) => (bin.bin_start + bin.bin_end) / 2);
   const yValues = histogram.map((bin: any) => bin.count);
-
-  // Base histogram trace
-  const histogramTrace: PlotlyTrace = {
-    x: xValues,
-    y: yValues,
-    type: 'bar',
-    name: 'Frequency',
-    marker: {
-      color: 'rgba(54, 162, 235, 0.5)',
-      line: {
-        color: 'rgba(54, 162, 235, 1)',
-        width: 1
-      }
-    },
-    hovertemplate: 
-      'Price Change: %{x:.1f}%<br>' +
-      'Target Price: ' + formatCurrency(stockPrice.value) + ' → ' + 
-      '%{customdata[2]}<br>' +
-      'Count: %{y}<br>' +
-      'Probability ≤ %{x:.1f}%: %{customdata[0]:.1f}%<br>' +
-      'Probability > %{x:.1f}%: %{customdata[1]:.1f}%<br>' +
-      '<extra></extra>',
-    customdata: xValues.map((x: number, i: number) => {
-      const lessOrEqual = yValues.slice(0, i + 1).reduce((sum, count) => sum + count, 0);
-      const greater = yValues.slice(i).reduce((sum, count) => sum + count, 0);
-      const targetPrice = stockPrice.value * (1 + x / 100);
-      return [
-        (lessOrEqual / totalSamples.value) * 100,
-        (greater / totalSamples.value) * 100,
-        formatCurrency(targetPrice)
-      ];
-    })
-  };
-
-  // Add vertical lines for statistical markers
-  const markerColors: { [key: string]: string } = {
-    'MEAN': '#FFD700',
-    '-1SD': '#FF6B6B',
-    '+1SD': '#4CAF50',
-    '-2SD': '#DC3545',
-    '+2SD': '#28A745'
-  };
-
-  const markerTraces: PlotlyTrace[] = [];
-  histogram.forEach((bin: any, index: number) => {
-    bin.markers.forEach((marker: string) => {
-      markerTraces.push({
-        x: [xValues[index], xValues[index]],
-        y: [0, Math.max(...yValues)],
-        type: 'scatter',
-        mode: 'lines',
-        name: marker,
+  return [
+    // Histogram trace
+    {
+      x: xValues,
+      y: yValues,
+      type: 'bar',
+      name: 'Frequency',
+      marker: {
+        color: 'rgba(54, 162, 235, 0.5)',
         line: {
-          color: markerColors[marker],
-          width: 2
+          color: 'rgba(54, 162, 235, 1)',
+          width: 1
         }
-      });
-    });
-  });
-
-  return [histogramTrace, ...markerTraces];
+      },
+      hovertemplate: 
+        'Price Change: %{x:.1f}%<br>' +
+        'Target Price: ' + formatCurrency(stockPrice.value) + ' → ' + 
+        '%{customdata[2]}<br>' +
+        'Count: %{y}<br>' +
+        'Probability ≤ %{x:.1f}%: %{customdata[0]:.1f}%<br>' +
+        'Probability > %{x:.1f}%: %{customdata[1]:.1f}%<br>' +
+        '<extra></extra>',
+      customdata: xValues.map((x: number, i: number) => {
+        const lessOrEqual = yValues.slice(0, i + 1).reduce((sum: number, count: number) => sum + count, 0);
+        const greater = yValues.slice(i).reduce((sum: number, count: number) => sum + count, 0);
+        const targetPrice = stockPrice.value * (1 + x / 100);
+        return [
+          (lessOrEqual / totalSamples.value) * 100,
+          (greater / totalSamples.value) * 100,
+          formatCurrency(targetPrice)
+        ];
+      })
+    }
+  ];
 });
 
-const chartLayout = computed(() => ({
-  showlegend: true,
-  xaxis: {
-    title: 'Price Change (%)',
-    gridcolor: '#e0e0e0',
-    range: [-percentRange.value, percentRange.value], // Set range to match user input
-    fixedrange: true // Prevent zooming/panning on x-axis to maintain the range
-  },
-  yaxis: {
-    title: 'Frequency',
-    gridcolor: '#e0e0e0'
+const ivChartTraces = computed<PlotlyTrace[]>(() => {
+  if (!ivData.value || !Array.isArray(ivData.value[0]) || !Array.isArray(ivData.value[1])) {
+    console.log('No valid IV data available for chart');
+    return [];
   }
-}));
+
+  const [dates, values] = ivData.value;
+  
+  if (!dates.length || !values.length) {
+    console.log('IV data arrays are empty');
+    return [];
+  }
+
+  const jsDateStrings = dates.map(dateStr => {
+    // Handle both formats: datetime.date(YYYY,MM,DD) and YYYY-MM-DD
+    if (dateStr.includes('datetime.date')) {
+      const match = dateStr.match(/datetime\.date\((\d+),\s*(\d+),\s*(\d+)\)/);
+      if (match) {
+        const [_, year, month, day] = match;
+        // Ensure month and day are padded with zeros if needed
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+    }    if (typeof dateStr === 'string') {
+      if (dateStr.includes('datetime.date')) {
+        const match = dateStr.match(/datetime\.date\((\d+),\s*(\d+),\s*(\d+)\)/);
+        if (match) {
+          const [_, year, month, day] = match;
+          return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+      }
+      // Handle YYYY-MM-DD format
+      return dateStr;
+    }
+    // Handle if it's already a Date object or invalid
+    return '';
+  });
+
+  console.log('Creating IV chart with data:', {
+    dates: jsDateStrings.length,
+    values: values.length,
+    firstDate: jsDateStrings[0],
+    firstValue: values[0]
+  });
+
+  // Remove any empty date strings
+  const validPairs = jsDateStrings.map((date, i) => ({date, value: values[i]}))
+    .filter(pair => pair.date !== '');
+
+  // Ensure values are valid numbers
+  const validChartData = validPairs.map(pair => ({
+    date: pair.date,
+    value: Number.isFinite(Number(pair.value)) ? Number(pair.value) : 0
+  }));
+
+  return [{
+    x: validChartData.map(d => d.date),
+    y: validChartData.map(d => d.value), // Values are already in decimal format (e.g., 0.312751 = 31.27%)
+    type: 'scatter',
+    mode: 'lines',
+    name: 'Implied Volatility',
+    line: {
+      color: '#2196F3',
+      width: 2
+    },
+    hovertemplate: 'Date: %{x}<br>IV: %{y:.1%}<extra></extra>'
+  }];
+});
 
 // Methods
-const loadOptionsData = async (tickerToLoad: string) => {  loading.value = true;
+const loadOptionsData = async (tickerToLoad: string) => {
+  loading.value = true;
   error.value = null;
   optionsData.value = null;
+  ivData.value = null;
   
   try {
     // Reset chains before loading new data
@@ -333,7 +450,9 @@ const loadOptionsData = async (tickerToLoad: string) => {  loading.value = true;
     if (priceRefreshInterval.value) {
       clearInterval(priceRefreshInterval.value);
     }
-    priceRefreshInterval.value = window.setInterval(refreshCurrentPrice, 3000);    // Load expiration dates and chains after basic data is loaded
+    priceRefreshInterval.value = window.setInterval(refreshCurrentPrice, 3000);
+
+    // Load expiration dates and chains after basic data is loaded
     await loadExpirationDates();
   } catch (err: any) {
     console.error("Error loading data:", err);
@@ -406,7 +525,7 @@ const formatNumber = (num: number) => {
   return num.toLocaleString();
 };
 
-// Upravíme loadExpirationDates
+// Update loadExpirationDates function
 const loadExpirationDates = async () => {
   if (!tickerId.value) return;
   
@@ -414,10 +533,10 @@ const loadExpirationDates = async () => {
     const dates = await getExpirationDates(tickerId.value);
     expirationDates.value = dates;
     
-    // Vybereme první datum pouze pokud není již nějaká expirace vybraná
-    if (expirationDates.value.length > 0 && !selectedExpiration.value) {
+    // Auto-select first expiration date if available
+    if (expirationDates.value.length > 0) {
       selectedExpiration.value = expirationDates.value[0];
-      await loadOptionChains();
+      // loadOptionChains will be triggered by the watch on selectedExpiration
     }
   } catch (err) {
     console.error('Failed to load expiration dates:', err);
@@ -435,6 +554,11 @@ const loadOptionChains = async () => {
 
     callChain.value = callData.option_chain;
     putChain.value = putData.option_chain;
+    
+    // Log the calculated nearest strike for debugging
+    console.log('Current price:', stockPrice.value);
+    console.log('Available strikes:', [...callChain.value, ...putChain.value].map(opt => opt.strike));
+    console.log('Calculated nearest strike:', nearestStrike.value);
 
     // Nastavíme interval pro refresh dat
     if (chainRefreshInterval.value) {
@@ -474,26 +598,33 @@ const refreshCurrentPrice = async () => {
   }
 };
 
-// Remove both existing watch handlers for selectedExpiration and replace with a single one
+// Single consolidated watch handler for expiration changes
 watch(selectedExpiration, async (newExpiration, oldExpiration) => {
   if (newExpiration && newExpiration !== oldExpiration) {
-    if (selectedExpiration.value) {
-      // Update histogram days to match expiration
-      const daysToExp = getDaysUntil(selectedExpiration.value);
-      days.value = daysToExp;
-      
-      // Update store and reload data
-      tickerStore.updateHistogramSettings({
-        days: daysToExp,
-        percentRange: percentRange.value
-      });
-      
-      // Load new option chains
-      await loadOptionChains();
-      
-      // Update histogram data
+    console.log('Expiration changed to:', newExpiration);
+    
+    // Update histogram days to match expiration
+    const daysToExp = getDaysUntil(newExpiration);
+    days.value = daysToExp;
+    
+    // Update store settings
+    tickerStore.updateHistogramSettings({
+      days: daysToExp,
+      percentRange: percentRange.value
+    });
+    
+    // Load option chains first
+    await loadOptionChains();
+    
+    // Then update histogram data
+    try {
       const optionsResponse = await getGrowthProbability(tickerId.value, days.value, percentRange.value);
       optionsData.value = optionsResponse;
+      
+      // Finally load IV data once we have chains and nearest strike
+      await loadIvData();
+    } catch (err) {
+      console.error('Error updating data:', err);
     }
   }
 });
@@ -585,6 +716,63 @@ const handlePutScroll = (event: Event) => {
     }, 50);
   }
 };
+
+// Functions
+const loadIvData = async () => {
+  if (!tickerId.value || !selectedExpiration.value || !nearestStrike.value) {
+    console.log('Cannot load IV data:', {
+      tickerId: tickerId.value,
+      expiration: selectedExpiration.value,
+      strike: nearestStrike.value
+    });
+    return;
+  }
+  
+  ivLoading.value = true;
+  try {
+    console.log('Loading IV data for:', {
+      ticker: tickerId.value,
+      expiration: selectedExpiration.value,
+      strike: nearestStrike.value
+    });
+    
+    const response = await getImpliedVolatility(
+      tickerId.value,
+      selectedExpiration.value,
+      nearestStrike.value
+    );
+    
+    console.log('Raw IV response:', response);
+    
+    if (response && Array.isArray(response[0]) && Array.isArray(response[1])) {
+      ivData.value = response;
+      console.log('Processed IV data:', {
+        dates: response[0].length,
+        values: response[1].length,
+        firstDate: response[0][0],
+        firstValue: response[1][0]
+      });
+    } else {
+      console.error('Invalid IV data format:', response);
+      ivData.value = null;
+    }
+  } catch (err) {
+    console.error('Error loading IV data:', err);
+    ivData.value = null;
+  } finally {
+    ivLoading.value = false;
+  }
+};
+
+// Watch for changes that should trigger IV data reload
+watch(
+  [nearestStrike, selectedExpiration],
+  async ([newStrike, newExpiration], [oldStrike, oldExpiration]) => {
+    if (newStrike !== oldStrike || newExpiration !== oldExpiration) {
+      await loadIvData();
+    }
+  }
+);
 </script>
 
 <style scoped>
@@ -876,5 +1064,33 @@ const handlePutScroll = (event: Event) => {
 
 .chain-table tbody tr.sd-two:not(.near-strike) {
   background-color: #f5c6cb !important;
+}
+
+/* Add after other styles */
+.iv-chart-container {
+  position: relative;
+  min-height: 300px;
+  background-color: white;
+  padding: 15px 20px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  margin: 20px 0;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.9);
+  z-index: 1;
+  font-size: 1.1em;
+  color: #666;
+  backdrop-filter: blur(2px);
+  border-radius: 5px;
 }
 </style>
