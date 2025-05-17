@@ -503,8 +503,8 @@ def get_current_price(ticker_id: str):
         JSON response containing current price and timestamp
     """
     logger.info(f"get_current_price({ticker_id}) - Start")
+    connection = None
     try:
-        #stock = yf.Ticker(ticker_id)
         fmp = FMP()
         today = datetime.now().strftime("%Y-%m-%d")
 
@@ -516,6 +516,7 @@ def get_current_price(ticker_id: str):
             current_price = ticker_data.price
         else:
             current_price = prices_raw[0]['price']
+            
         if current_price is None:
             raise HTTPException(status_code=404, detail="Price data not available")
             
@@ -526,12 +527,11 @@ def get_current_price(ticker_id: str):
         }
     except Exception as e:
         logger.error(f"Error fetching current price: {str(e)}")
-        return {
-            "ticker_id": ticker_id,
-            "price": 0.0,
-            "timestamp": datetime.now().isoformat()
-        }
         raise HTTPException(status_code=500, detail="Failed to fetch price data")
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+            logger.debug("Database connection closed")
 
 @fastApiApp.get("/options/get_iv/{ticker_id}/{expiration}/{strike}")
 def get_implied_volatility(ticker_id: str, expiration: str, strike: float):

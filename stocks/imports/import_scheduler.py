@@ -1064,7 +1064,7 @@ def get_price_discount_z_score(dao_tickers_data : DAO_TickersData, ticker_id:str
                 vwma_value = np.sum(price_slice * volume_slice) / np.sum(volume_slice)
                 vwma.append(vwma_value)
             
-            if math.isnan(vwma[0]):
+            if len(vwma) == 0 or math.isnan(vwma[0]):
                 return None
 
             prices_list = prices_list[:length+1]
@@ -1107,20 +1107,20 @@ def calculate_price_discount(input_ticker_id_list=None):
             counter += 1
 
             result100 = get_price_discount_z_score(dao_tickers_data, ticker_id, 100)
-            if result100 == None:
+            if not result100 or len(result100) < 2:
                 continue
             prob100 = result100[0]
             discount100 = result100[1]
             
 
             result200 = get_price_discount_z_score(dao_tickers_data, ticker_id, 200)
-            if result200 == None:
+            if not result200 or len(result200) < 2:
                 continue
             prob200 = result200[0]
             discount200 = result200[1]
 
             result500 = get_price_discount_z_score(dao_tickers_data, ticker_id, 500)
-            if result500 == None:
+            if not result500 or len(result500) < 2:
                 continue
             prob500 = result500[0]
             discount500 = result500[1]
