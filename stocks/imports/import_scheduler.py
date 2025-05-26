@@ -1407,12 +1407,13 @@ def calc_valuation_stocks(input_ticker_id_list=None):
             logger.info(f"calc_valuation_stocks - {ticker_id} {counter}/{len(db_ticker_list)}")
 
             ticker = dao_tickers.select_ticker(ticker_id)
-            growth = ticker.growth_rate
+            #growth = ticker.growth_rate
+            growth = ticker.predict_eps_cagr
             cash = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_Q, 1)
             shares = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.SHARES_OUTSTANDING_Q, 1)
             total_debt = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_DEBT_Q, 1)
 
-            if len(shares) == 0 or len(cash) == 0 or len(total_debt) == 0 or growth == None or shares[0].value == 0 or ticker.growth_rate < 0:
+            if len(shares) == 0 or len(cash) == 0 or len(total_debt) == 0 or growth == None or shares[0].value == 0 or ticker.predict_eps_cagr < 0:
                 dict_data = {
                     TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__EPS_VALUATION: 0,
                     TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__FCF_VALUATION: 0
@@ -2145,7 +2146,7 @@ def calc_margin_growth():
             counter += 1
             logger.info(f"calc_margin_growth - {ticker_id} {counter}/{len(db_ticker_list)}")
 
-            years = 5
+            years = 2
             gross_margin_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT_MARGIN_Q, years * 4)
             operating_margin_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPERATING_INCOME_MARGIN_Q, years * 4)
             ebitda_margin_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA_MARGIN_Q, years * 4)

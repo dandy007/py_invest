@@ -107,6 +107,21 @@ def prepare_chart_data_TTM(ticker_data_list: list[ROW_TickersData]):
 
     return [list_x, list_y]
 
+def prepare_chart_data_TTM_AVG(ticker_data_list: list[ROW_TickersData]):
+    list_x = []
+    list_y = []
+
+    ticker_data_list.sort(key=lambda x: (x.date), reverse=False)
+
+    counter = -1
+    for ticker_data in ticker_data_list:
+        counter += 1
+        if counter < 3:
+            continue
+        list_x.append(ticker_data.date)
+        list_y.append((ticker_data_list[counter].value + ticker_data_list[counter-1].value + ticker_data_list[counter-2].value + ticker_data_list[counter-3].value)/4)
+
+    return [list_x, list_y]
 
 
 @fastApiApp.get("/options/get_expirations/{ticker_id}")
@@ -622,12 +637,12 @@ def get_stock(ticker_id: str):
     prepared_chart_data__fcf_valuation = prepare_chart_data_EXTEND([fcf_discount_row], days_back)
 
 
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT_MARGIN_Q, annual * 4)
-    prepared_chart_data__gross_margin = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPERATING_INCOME_MARGIN_Q, annual * 4)
-    prepared_chart_data__operation_margin = prepare_chart_data(data_list)
-    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_MARGIN_Q, annual * 4)
-    prepared_chart_data__net_margin = prepare_chart_data(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.GROSS_PROFIT_MARGIN_Q, annual * 5)
+    prepared_chart_data__gross_margin = prepare_chart_data_TTM_AVG(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPERATING_INCOME_MARGIN_Q, annual * 5)
+    prepared_chart_data__operation_margin = prepare_chart_data_TTM_AVG(data_list)
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_MARGIN_Q, annual * 5)
+    prepared_chart_data__net_margin = prepare_chart_data_TTM_AVG(data_list)
 
 
     data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS, days_back)
