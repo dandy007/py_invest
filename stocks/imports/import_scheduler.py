@@ -2212,7 +2212,7 @@ def start_import_schedulers():
             scheduler.add_job(download_fundamental_statements, 'cron', day_of_week='wed,sat', hour=6, minute=30)
 
             scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
-            scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+            scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=10, minute=30)
             scheduler.add_job(calc_valuation_ratios_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
             scheduler.add_job(calc_valuation_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
             scheduler.add_job(calc_margin_growth, 'cron',day_of_week='tue-sat', hour=12, minute=30)
