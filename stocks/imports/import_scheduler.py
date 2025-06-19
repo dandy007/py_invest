@@ -2256,7 +2256,7 @@ def start_import_schedulers():
             #downloadStockOptionData()
             #download_fundamental_statements()
             #estimate_growth_stocks()
-            calculate_price_discount()
+            #calculate_price_discount()
             #calc_valuation_ratios_stocks()
             #calc_margin_growth()
             #calc_valuation_stocks()
