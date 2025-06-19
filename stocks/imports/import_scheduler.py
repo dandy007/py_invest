@@ -1140,13 +1140,6 @@ def calculate_price_discount(input_ticker_id_list=None):
 
             years_count = 3
 
-            #pe_mean_stdev = dao_tickers_data.select_ticker_data_mean_stdev(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PE__CONTINOUS, years_count * 365)
-            #pb_mean_stdev = dao_tickers_data.select_ticker_data_mean_stdev(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS, years_count * 365)
-            #pfcf_mean_stdev = dao_tickers_data.select_ticker_data_mean_stdev(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS, years_count * 365)
-
-            #pb_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PB, 1)
-            #pfcf_list = dao_tickers_data.select_ticker_data(ticker.ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, 4)
-
             pe_zscore = None
             pfcf_zscore = None
             pb_zscore = None
@@ -1163,7 +1156,7 @@ def calculate_price_discount(input_ticker_id_list=None):
             dao_tickers.update_ticker_types(ticker_id, dict_data, True)
 
 
-            priceList = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 1000)
+            priceList = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 2500)
 
             if len(priceList) > 30:
                 maxPrice = max(price.value for price in priceList)
@@ -1182,6 +1175,30 @@ def calculate_price_discount(input_ticker_id_list=None):
                         TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__MONTH_DISCOUNT: monthDiscount,
                         TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__WEEK_DISCOUNT: weekDiscount,
                         TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__DAY_DISCOUNT: dayDiscount
+                }
+                dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+
+            # Calculate drawdowns and their statistics
+            drawdowns = []
+            peak = None
+            priceList = reversed(priceList)
+            # Reverse priceList to process from oldest to newest
+            for price in priceList:
+                if peak is None or price.value > peak:
+                    peak = price.value
+                drawdown = (peak - price.value) / peak if peak != 0 else 0
+                drawdowns.append(drawdown)
+
+            if len(drawdowns) > 1:
+                current_drawdown = drawdowns[-1]
+                mean_dd = np.mean(drawdowns)
+                std_dd = np.std(drawdowns)
+                # Probability of current drawdown or worse (lower), using normal distribution CDF
+                prob_drawdown = 1 - stats.norm.cdf(current_drawdown, loc=mean_dd, scale=std_dd) if std_dd > 0 else 1.0
+
+                dict_data = {
+                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__DRAWDOWN_PERCENT: current_drawdown,
+                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__DRAWDOWN_PROB: prob_drawdown
                 }
                 dao_tickers.update_ticker_types(ticker_id, dict_data, True)
 
@@ -2239,7 +2256,7 @@ def start_import_schedulers():
             #downloadStockOptionData()
             #download_fundamental_statements()
             #estimate_growth_stocks()
-            #calculate_price_discount()
+            calculate_price_discount()
             #calc_valuation_ratios_stocks()
             #calc_margin_growth()
             #calc_valuation_stocks()
