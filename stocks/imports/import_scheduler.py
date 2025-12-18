@@ -725,6 +725,17 @@ def download_fundamental_statements(input_ticker_id_list = None, limit = 100):
                     dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPERATING_INCOME_MARGIN, income_statement['operatingIncomeRatio'], date_d)
                     dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_MARGIN, income_statement['netIncomeRatio'], date_d)
 
+                for cash_flow in cash_flow_statement_a_list:
+                    date_d = datetime.strptime(cash_flow['date'], "%Y-%m-%d").date()
+                    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, cash_flow['freeCashFlow'], date_d)
+                    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION, cash_flow['operatingCashFlow'], date_d)
+                    
+                    # Calculate FCF Margin (Annual)
+                    rev_record = next((item for item in income_statement_a_list if item['date'] == cash_flow['date']), None)
+                    if rev_record and rev_record['revenue'] and rev_record['revenue'] != 0:
+                         fcf_margin = cash_flow['freeCashFlow'] / rev_record['revenue']
+                         dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_MARGIN, fcf_margin, date_d)
+
                 for income_statement in income_statement_q_list:
                     date_d = datetime.strptime(income_statement['date'], "%Y-%m-%d").date()
                     dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, income_statement['revenue'], date_d)
@@ -737,6 +748,17 @@ def download_fundamental_statements(input_ticker_id_list = None, limit = 100):
                     dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA_MARGIN_Q, income_statement['ebitdaratio'], date_d)
                     dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPERATING_INCOME_MARGIN_Q, income_statement['operatingIncomeRatio'], date_d)
                     dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_MARGIN_Q, income_statement['netIncomeRatio'], date_d)
+
+                for cash_flow in cash_flow_statement_q_list:
+                    date_d = datetime.strptime(cash_flow['date'], "%Y-%m-%d").date()
+                    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, cash_flow['freeCashFlow'], date_d)
+                    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION_Q, cash_flow['operatingCashFlow'], date_d)
+
+                    # Calculate FCF Margin (Quarterly)
+                    rev_record = next((item for item in income_statement_q_list if item['date'] == cash_flow['date']), None)
+                    if rev_record and rev_record['revenue'] and rev_record['revenue'] != 0:
+                         fcf_margin = cash_flow['freeCashFlow'] / rev_record['revenue']
+                         dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_MARGIN_Q, fcf_margin, date_d)
 
                 for balance_sheet in balance_sheet_statement_a_list:
                     date_d = datetime.strptime(balance_sheet['date'], "%Y-%m-%d").date()
@@ -760,15 +782,15 @@ def download_fundamental_statements(input_ticker_id_list = None, limit = 100):
                     dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_LIABILITIES_Q, balance_sheet['totalLiabilities'], date_d)
                     dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY_Q, balance_sheet['totalStockholdersEquity'], date_d)
 
-                for cash_flow in cash_flow_statement_a_list:
-                    date_d = datetime.strptime(cash_flow['date'], "%Y-%m-%d").date()
-                    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, cash_flow['freeCashFlow'], date_d)
-                    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION, cash_flow['operatingCashFlow'], date_d)
+                #for cash_flow in cash_flow_statement_a_list:
+                #    date_d = datetime.strptime(cash_flow['date'], "%Y-%m-%d").date()
+                #    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF, cash_flow['freeCashFlow'], date_d)
+                #    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION, cash_flow['operatingCashFlow'], date_d)
 
-                for cash_flow in cash_flow_statement_q_list:
-                    date_d = datetime.strptime(cash_flow['date'], "%Y-%m-%d").date()
-                    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, cash_flow['freeCashFlow'], date_d)
-                    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION_Q, cash_flow['operatingCashFlow'], date_d)
+                #for cash_flow in cash_flow_statement_q_list:
+                #    date_d = datetime.strptime(cash_flow['date'], "%Y-%m-%d").date()
+                #    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, cash_flow['freeCashFlow'], date_d)
+                #    dao_tickers_data.store_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION_Q, cash_flow['operatingCashFlow'], date_d)
             except Exception as e:
                 logger.error(f"download_fundamental_statements - Error {e}")
                 traceback.print_exc()
@@ -2223,11 +2245,10 @@ def calculate_rdcf_valuation(input_ticker_id_list=None):
             tickers = input_ticker_id_list
 
         wacc = 0.10
-        perp_growth = 0.02
+        perp_growth = 0.025
         
         counter = 0
         for ticker_id in tickers:
-            ticker_id = 'ACHC'
             counter += 1
             logger.info(f"calculate_rdcf_valuation - {ticker_id} {counter}/{len(tickers)}")
             
@@ -2242,7 +2263,7 @@ def calculate_rdcf_valuation(input_ticker_id_list=None):
                 if growth_rate is None:
                     continue
                 
-                growth_rate = min(growth_rate * 0.66, 0.10)
+                growth_rate = growth_rate # reduce by 10%
                 
                 # Get LTM FCF
                 fcf_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, 4)
@@ -2262,6 +2283,27 @@ def calculate_rdcf_valuation(input_ticker_id_list=None):
                 shares_val = shares[0].value
                 cash_val = cash[0].value
                 debt_val = total_debt[0].value
+
+                # Calculate Buyback Yield (Average annual reduction in shares over last 4 years)
+                shares_history = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.SHARES_OUTSTANDING_Q, 16)
+                buyback_yield = 0.0
+                if shares_history and len(shares_history) > 12: # Need at least 3 years to be representative
+                    shares_now = shares_history[0].value # Data is sorted descending by date usually? No, select_ticker_data usually returns sorted by date DESC if limit used?
+                    # Let's verify sort. select_ticker_data implementation: order by date desc.
+                    shares_start = shares_history[-1].value
+                    
+                    if shares_now > 0 and shares_start > 0:
+                        years = (shares_history[0].date - shares_history[-1].date).days / 365.25
+                        if years > 2:
+                            shares_cagr = (shares_now / shares_start) ** (1 / years) - 1
+                            if shares_cagr < 0:
+                                buyback_yield = -shares_cagr # Convert negative growth to positive yield
+                                # Cap buyback yield contribution to be safe (e.g., max 5%)
+                                if buyback_yield > 0.05:
+                                    buyback_yield = 0.05
+                                
+                                growth_rate += buyback_yield
+                                # logger.info(f"{ticker_id}: Added Buyback Yield: {buyback_yield:.2%}, New Growth: {growth_rate:.2%}")
                 
                 # Calculate Present Value of FCF for 10 years
                 present_value_fcf = 0
@@ -2348,7 +2390,7 @@ def start_import_schedulers():
             #update_stock_recommendations()
             #update_stock_predictions()
             #downloadStockOptionData()
-            #download_fundamental_statements(None, 1000)
+            #download_fundamental_statements({'MA', 'V', 'MSFT'}, 1000)
             #estimate_growth_stocks()
             #calculate_price_discount()
             #calc_valuation_ratios_stocks()
@@ -2360,7 +2402,7 @@ def start_import_schedulers():
             #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
             #analyze_option_sentiment()
             #calc_ratio_discounts()
-            #calculate_rdcf_valuation()
+            calculate_rdcf_valuation()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
             
             pass

@@ -699,6 +699,10 @@ def get_stock(ticker_id: str):
     data['OPER_MARGIN'] = prepared_chart_data__operation_margin
     data['NET_MARGIN'] = prepared_chart_data__net_margin
 
+    data_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_MARGIN_Q, annual * 5)
+    prepared_chart_data__fcf_margin = prepare_chart_data_TTM_AVG(data_list)
+    data['FCF_MARGIN'] = prepared_chart_data__fcf_margin
+
     # Valuation charts - PE, PS, PB, PFCF - each have separate chart
     data['PE'] = prepared_chart_data__pe
     data['PB'] = prepared_chart_data__pb

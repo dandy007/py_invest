@@ -266,6 +266,7 @@
   const latestGrossMargin = computed(() => getLatestValue(stockData.value?.GROSS_MARGIN));
   const latestOperMargin = computed(() => getLatestValue(stockData.value?.OPER_MARGIN));
   const latestNetMargin = computed(() => getLatestValue(stockData.value?.NET_MARGIN));
+  const latestFcfMargin = computed(() => getLatestValue(stockData.value?.FCF_MARGIN));
   
   const marginChartTraces = computed((): PlotlyTrace[] => {
     if (!stockData.value) return [];
@@ -273,6 +274,7 @@
       createTrace(stockData.value.GROSS_MARGIN, `Gross Margin (${formatPercentage(latestGrossMargin.value, 1)})`, { color: '#1f77b4' }),
       createTrace(stockData.value.OPER_MARGIN, `Operating Margin (${formatPercentage(latestOperMargin.value, 1)})`, { color: '#ff7f0e' }),
       createTrace(stockData.value.NET_MARGIN, `Net Margin (${formatPercentage(latestNetMargin.value, 1)})`, { color: '#2ca02c' }),
+      createTrace(stockData.value.FCF_MARGIN, `FCF Margin (${formatPercentage(latestFcfMargin.value, 1)})`, { color: '#9467bd' }),
      ];
      return traces.filter((t): t is PlotlyTrace => t !== null);
   });

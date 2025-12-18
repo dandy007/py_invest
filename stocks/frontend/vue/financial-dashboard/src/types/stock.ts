@@ -16,6 +16,7 @@ export interface StockData {
   GROSS_MARGIN: ChartData;
   OPER_MARGIN: ChartData;
   NET_MARGIN: ChartData;
+  FCF_MARGIN: ChartData;
 
   // Valuation charts
   PE: ChartData;
