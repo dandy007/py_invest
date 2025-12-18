@@ -2348,7 +2348,7 @@ def start_import_schedulers():
             #update_stock_recommendations()
             #update_stock_predictions()
             #downloadStockOptionData()
-            download_fundamental_statements(None, 1000)
+            #download_fundamental_statements(None, 1000)
             #estimate_growth_stocks()
             #calculate_price_discount()
             #calc_valuation_ratios_stocks()
@@ -2360,7 +2360,7 @@ def start_import_schedulers():
             #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
             #analyze_option_sentiment()
             #calc_ratio_discounts()
-            calculate_rdcf_valuation()
+            #calculate_rdcf_valuation()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
             
             pass
