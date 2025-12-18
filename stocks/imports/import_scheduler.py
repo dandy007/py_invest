@@ -665,7 +665,7 @@ def downloadStockOptionData(input_ticker_id_list=None):
         traceback.print_exc()
     logger.info(f"downloadStockOptionData - End")
 
-def download_fundamental_statements(input_ticker_id_list = None):
+def download_fundamental_statements(input_ticker_id_list = None, limit = 100):
     logger.info(f"download_fundamental_statements - Start")
     try:
         fmp = FMP()
@@ -691,24 +691,24 @@ def download_fundamental_statements(input_ticker_id_list = None):
             if skip:
                 continue
             
-            last_record = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, 1)
+            #last_record = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, 1)
 
-            now = date.today()
-            if last_record != None and len(last_record) > 0 and (now - last_record[0].date).days < 90:
-                continue
+            #now = date.today()
+            #if last_record != None and len(last_record) > 0 and (now - last_record[0].date).days < 90:
+            #    continue
 
-            income_statement_q_list = fmp.get_income_statement(ticker_id, True)
+            income_statement_q_list = fmp.get_income_statement(ticker_id, True, limit)
             #print(counter)
 
             if income_statement_q_list != None and len(income_statement_q_list) == 0:
                 continue
 
-            balance_sheet_statement_q_list = fmp.get_balance_sheet_statement(ticker_id, True)
-            cash_flow_statement_q_list = fmp.get_cash_flow_statement(ticker_id, True)
+            balance_sheet_statement_q_list = fmp.get_balance_sheet_statement(ticker_id, True, limit)
+            cash_flow_statement_q_list = fmp.get_cash_flow_statement(ticker_id, True, limit)
 
-            income_statement_a_list = fmp.get_income_statement(ticker_id, False)
-            balance_sheet_statement_a_list = fmp.get_balance_sheet_statement(ticker_id, False)
-            cash_flow_statement_a_list = fmp.get_cash_flow_statement(ticker_id, False)
+            income_statement_a_list = fmp.get_income_statement(ticker_id, False, limit)
+            balance_sheet_statement_a_list = fmp.get_balance_sheet_statement(ticker_id, False, limit)
+            cash_flow_statement_a_list = fmp.get_cash_flow_statement(ticker_id, False, limit)
             
             try :
 
@@ -2211,6 +2211,99 @@ def calc_margin_growth():
         traceback.print_exc()
     logger.info("calc_margin_growth - End")
 
+def calculate_rdcf_valuation(input_ticker_id_list=None):
+    logger.info(f"calculate_rdcf_valuation - Start")
+    try:
+        connection = DB.get_connection_mysql()
+        dao_tickers = DAO_Tickers(connection)
+        dao_tickers_data = DAO_TickersData(connection)
+
+        tickers = dao_tickers.select_tickers_all__limited_ids()
+        if (input_ticker_id_list != None):
+            tickers = input_ticker_id_list
+
+        wacc = 0.10
+        perp_growth = 0.02
+        
+        counter = 0
+        for ticker_id in tickers:
+            ticker_id = 'ACHC'
+            counter += 1
+            logger.info(f"calculate_rdcf_valuation - {ticker_id} {counter}/{len(tickers)}")
+            
+            try:
+                ticker = dao_tickers.select_ticker(ticker_id)
+                if ticker is None:
+                    continue
+                
+                # Get Revenue CAGR (used as FCF growth proxy)
+                growth_rate = ticker.predict_rev_cagr
+                
+                if growth_rate is None:
+                    continue
+                
+                growth_rate = min(growth_rate * 0.66, 0.10)
+                
+                # Get LTM FCF
+                fcf_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.FCF_Q, 4)
+                if len(fcf_list) < 4:
+                    continue
+                
+                ltm_fcf = sum(item.value for item in fcf_list)
+                
+                # Get Shares, Cash, Debt for Equity Value
+                shares = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.SHARES_OUTSTANDING_Q, 1)
+                cash = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_Q, 1)
+                total_debt = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_DEBT_Q, 1)
+                
+                if not shares or not cash or not total_debt or len(shares) == 0 or len(cash) == 0 or len(total_debt) == 0 or shares[0].value == 0:
+                    continue
+                
+                shares_val = shares[0].value
+                cash_val = cash[0].value
+                debt_val = total_debt[0].value
+                
+                # Calculate Present Value of FCF for 10 years
+                present_value_fcf = 0
+                current_fcf = ltm_fcf
+                
+                for year in range(1, 11):
+                    current_fcf = current_fcf * (1 + growth_rate)
+                    present_value_fcf += current_fcf / ((1 + wacc) ** year)
+                
+                # Terminal Value
+                # TV = FCF_10 * (1 + g) / (WACC - g)
+                terminal_value = (current_fcf * (1 + perp_growth)) / (wacc - perp_growth)
+                present_terminal_value = terminal_value / ((1 + wacc) ** 10)
+                
+                enterprise_value = present_value_fcf + present_terminal_value
+                equity_value = enterprise_value #+ cash_val - debt_val
+                
+                implied_price = equity_value / shares_val
+                
+                if implied_price < 0:
+                    implied_price = 0
+                
+                r_dcf_value = None
+                if ticker.price and ticker.price != 0:
+                    r_dcf_value = (implied_price - ticker.price) / ticker.price
+                
+                if r_dcf_value is not None:
+                    # Save to DB
+                    dict_data = {
+                        TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__R_DCF: r_dcf_value
+                    }
+                    dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+                
+            except Exception as e:
+                logger.error(f"calculate_rdcf_valuation - Error processing {ticker_id}: {e}")
+                continue
+
+    except Exception as e:
+        logger.error(f"calculate_rdcf_valuation - Error {e}")
+        traceback.print_exc()
+    logger.info(f"calculate_rdcf_valuation - End")
+
 def start_import_schedulers():
         #scheduler.add_job(notify_earnings, 'cron', second='*/10')
 
@@ -2226,7 +2319,7 @@ def start_import_schedulers():
             scheduler.add_job(update_stock_recommendations, 'cron',day_of_week='tue-sat', hour=0, minute=30)
             scheduler.add_job(update_stock_predictions, 'cron',day_of_week='sat', hour=3, minute=30)
             scheduler.add_job(downloadStockOptionData, 'cron',day_of_week='tue-sat', hour=0, minute=30)
-            scheduler.add_job(download_fundamental_statements, 'cron', day_of_week='wed,sat', hour=6, minute=30)
+            scheduler.add_job(download_fundamental_statements, 'cron', day_of_week='sat', hour=0, minute=30, args=[None, 1000])
 
             scheduler.add_job(estimate_growth_stocks, 'cron',day_of_week='tue-sat', hour=12, minute=30)
             scheduler.add_job(calculate_price_discount, 'cron',day_of_week='tue-sat', hour=10, minute=30)
@@ -2238,7 +2331,8 @@ def start_import_schedulers():
             scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS])
             scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PB__CONTINOUS])
             scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
-            scheduler.add_job(analyze_option_sentiment, 'cron', day_of_week='tue-sat', hour=12, minute=30)
+            #scheduler.add_job(analyze_option_sentiment, 'cron', day_of_week='tue-sat', hour=12, minute=30)
+            scheduler.add_job(calculate_rdcf_valuation, 'cron', day_of_week='tue-sat', hour=12, minute=30)
 
             scheduler.add_job(calc_ratio_discounts, 'cron',day_of_week='tue-sat', hour=12, minute=30)
 
@@ -2254,7 +2348,7 @@ def start_import_schedulers():
             #update_stock_recommendations()
             #update_stock_predictions()
             #downloadStockOptionData()
-            #download_fundamental_statements()
+            download_fundamental_statements(None, 1000)
             #estimate_growth_stocks()
             #calculate_price_discount()
             #calc_valuation_ratios_stocks()
@@ -2266,6 +2360,7 @@ def start_import_schedulers():
             #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
             #analyze_option_sentiment()
             #calc_ratio_discounts()
+            calculate_rdcf_valuation()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
             
             pass

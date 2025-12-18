@@ -66,14 +66,14 @@ class FMP:
                 return response.json()
         return None
     
-    def get_income_statement(self, ticker_id: str, quaterly: bool):
-        return fmpsdk.income_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', 100)
+    def get_income_statement(self, ticker_id: str, quaterly: bool, limit: int = 100):
+        return fmpsdk.income_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', limit)
     
-    def get_balance_sheet_statement(self, ticker_id: str, quaterly: bool):
-        return fmpsdk.balance_sheet_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', 100)
+    def get_balance_sheet_statement(self, ticker_id: str, quaterly: bool, limit: int = 100):
+        return fmpsdk.balance_sheet_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', limit)
     
-    def get_cash_flow_statement(self, ticker_id: str, quaterly: bool):
-        return fmpsdk.cash_flow_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', 100)
+    def get_cash_flow_statement(self, ticker_id: str, quaterly: bool, limit: int = 100):
+        return fmpsdk.cash_flow_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', limit)
     
     #def get_historic_prices(self, ticker_id: str, from_date: str, to_date: str):
     #    return fmpsdk.historical_price_full(os.getenv("FMP_API_KEY"), ticker_id, from_date, to_date)

@@ -209,7 +209,13 @@ class DAO_Tickers:
         ticker.option_year_discount = row[31]
         ticker.beta = row[32]
         
-        ticker.predict_eps_cagr = row[37]
+        if len(row) > 36:
+            ticker.predict_rev_cagr = row[36]
+        if len(row) > 37:
+            ticker.predict_eps_cagr = row[37]
+        if len(row) > 48:
+            ticker.r_dcf = row[48]
+        
         return ticker
 
 

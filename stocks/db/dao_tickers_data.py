@@ -78,6 +78,12 @@ class DAO_TickersData:
                     record.value = value
                     self.insert_ticker_data(record, True)
                     return 1
+                elif value != None and value != record.value and record.date == date:
+                    record.value = value
+                    self.update_ticker_data(record, True)
+                    return 1
+                else:
+                    return 0
                 
             elif value not in (None, ''):
                 if isinstance(value, (str)) == False and math.isnan(value):
