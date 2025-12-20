@@ -38,6 +38,8 @@ class ROW_Tickers:
     predict_eps_cagr = None
     predict_rev_cagr = None
     r_dcf = None
+    fundament_change = None
+    last_q_yoy_rev_growth = None
 
     def __init__(self):
         pass

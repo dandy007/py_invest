@@ -46,6 +46,155 @@ logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL + 1)  # Th
 
 scheduler = BackgroundScheduler()
 
+def calculate_fundament_change(input_ticker_id_list=None):
+    logger.info(f"calculate_fundament_change - Start")
+    try:
+        connection = DB.get_connection_mysql()  
+        dao_tickers = DAO_Tickers(connection)
+        dao_tickers_data = DAO_TickersData(connection)
+
+        db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
+        if (input_ticker_id_list != None):
+            db_ticker_list = input_ticker_id_list
+
+        counter = 0
+        for ticker_id in db_ticker_list:
+            counter += 1
+            logger.info(f"calculate_fundament_change - {ticker_id} - {counter}/{len(db_ticker_list)}")
+
+            try:
+                # Fetch last 20 quarters of data to cover long term trend (approx 5 years)
+                revenue_q = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_REVENUE_Q, 20)
+                net_income_q = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_Q, 20)
+                op_margin_q = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.OPERATING_INCOME_MARGIN_Q, 20)
+
+                if len(revenue_q) < 8 or len(net_income_q) < 8 or len(op_margin_q) < 8:
+                    # Need at least ~2 years to form a baseline
+                    continue
+
+                # Helper to calc YoY growth list
+                def get_yoy_growth_list(data_q):
+                    growth_rates = []
+                    # We can calc YoY for indices 0 to len-5
+                    # data_q[i] vs data_q[i+4]
+                    for i in range(len(data_q) - 4):
+                        curr = data_q[i].value
+                        prev = data_q[i+4].value
+                        if prev != 0 and prev is not None:
+                            val = (curr - prev) / abs(prev)
+                            growth_rates.append(val)
+                        else:
+                            growth_rates.append(None)
+                    return growth_rates
+
+                rev_growth_history = get_yoy_growth_list(revenue_q)
+                ni_growth_history = get_yoy_growth_list(net_income_q)
+                
+                # Helper to calc margins (absolute values)
+                # margin_q values are already ratios
+                
+                # Scoring Logic: ST (Last 3 quarters) vs LT (Rest of history)
+                # "Short Term" = indices 0, 1, 2 of the growth list
+                # "Long Term" = indices 3 to end
+                
+                def calc_component_score(history_list, weight_accel=1.0):
+                    # Filter Nones
+                    valid_history = [x for x in history_list if x is not None]
+                    if len(valid_history) < 4:
+                        return 0
+                        
+                    st_values = valid_history[:3]
+                    lt_values = valid_history[3:]
+                    
+                    if not st_values or not lt_values:
+                        return 0
+                        
+                    st_avg = sum(st_values) / len(st_values)
+                    lt_avg = sum(lt_values) / len(lt_values)
+                    
+                    delta = st_avg - lt_avg
+                    
+                    score = 0
+                    # Acceleration / Deceleration relative to Long Term
+                    if delta > 0.20: score += 3
+                    elif delta > 0.10: score += 2
+                    elif delta > 0.05: score += 1
+                    elif delta < -0.20: score -= 3
+                    elif delta < -0.10: score -= 2
+                    elif delta < -0.05: score -= 1
+                    
+                    return score
+
+                score_rev = calc_component_score(rev_growth_history)
+                score_ni = calc_component_score(ni_growth_history)
+                
+                # Margins ST vs LT
+                # Margins are not YoY growth, but absolute levels. 
+                # Compare ST avg margin vs LT avg margin
+                margin_values = [x.value for x in op_margin_q]
+                if len(margin_values) >= 4:
+                    st_margins = margin_values[:3]
+                    lt_margins = margin_values[3:]
+                    st_marg_avg = sum(st_margins) / len(st_margins)
+                    lt_marg_avg = sum(lt_margins) / len(lt_margins)
+                    marg_delta = st_marg_avg - lt_marg_avg
+                    
+                    score_marg = 0
+                    if marg_delta > 0.05: score_marg += 2
+                    elif marg_delta > 0.02: score_marg += 1
+                    elif marg_delta < -0.05: score_marg -= 2
+                    elif marg_delta < -0.02: score_marg -= 1
+                else:
+                    score_marg = 0
+
+                final_score = score_rev + score_ni + score_marg
+                
+                # Clamp
+                final_score = max(-5, min(5, final_score))
+                
+                # Calculate last_q_yoy_rev_growth
+                last_q_rev_growth = None
+                rev_growth_valid = [x for x in rev_growth_history if x is not None]
+                
+                if len(rev_growth_valid) >= 4:
+                     # rev_growth_valid is ordered newest to oldest (based on get_yoy_growth_list calling data_q[i] where data_q is usually descending date from DB select?, verify assumption)
+                     # Actually dao_tickers_data.select_ticker_data sorts by date desc usually? 
+                     # Checking select_ticker_data... it orders by period desc (which is date desc)
+                     # So index 0 is invalid/current quarter vs prev year?
+                     # get_yoy_growth_list iterates 0 to len-4.
+                     # index 0 is curr=most recent.
+                     
+                     last_q = rev_growth_valid[0] # most recent available
+                     next_3 = rev_growth_valid[1:4] # next 3
+                     
+                     # "o kolik procent vzrostl yoy posledni kvartal oproti nejsilnejsimu jinemu kvartalu z dalsich 3 spocitanych"
+                     # "hodnota v db bude kladna pouze pokud yoy growth posledniho kvartalu je vetsi, nez yoy tech ostatnich"
+                     
+                     max_other = max(next_3)
+                     
+                     last_q_rev_growth = last_q - max_other
+                
+
+                dict_data = {
+                    TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__FUNDAMENT_CHANGE: final_score
+                }
+                
+                if last_q_rev_growth is not None:
+                    dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__LAST_Q_YOY_REV_GROWTH] = last_q_rev_growth
+                
+                dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+                logger.info(f"calculate_fundament_change: Updated {ticker_id} = {final_score} (Rev:{score_rev} NI:{score_ni} Marg:{score_marg} LastQRevDiff:{last_q_rev_growth})")
+
+            except Exception as e:
+                # logger.error(f"calculate_fundament_change error for {ticker_id}: {e}")
+                continue
+
+    except Exception as e:
+        logger.error(f"calculate_fundament_change - Error {e}")
+        traceback.print_exc()
+    logger.info(f"calculate_fundament_change - End")
+
+
 def resetAfterSplit(input_ticker_id_list=None):
     logger.info(f"resetAfterSplit - Start")
     try:
@@ -79,6 +228,7 @@ def resetAfterSplit(input_ticker_id_list=None):
             calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PFCF__CONTINOUS, [ticker_id])
 
             calc_ratio_discounts([ticker_id])
+            calculate_fundament_change([ticker_id])
 
 
             logger.info(f"resetAfterSplit: Resetted {ticker_id}")
@@ -2356,6 +2506,8 @@ def start_import_schedulers():
             scheduler.add_job(update_ticker_profile, 'cron', day_of_week='sun', hour=3, minute=30, args=[False])
             scheduler.add_job(update_earnings_calendar, 'cron',day_of_week='sun', hour=3, minute=30)
             
+            scheduler.add_job(calculate_fundament_change, 'cron', day_of_week='sat', hour=3, minute=0)
+            
             scheduler.add_job(download_prices, 'cron',day_of_week='tue-sat', hour=0, minute=30)
             scheduler.add_job(update_ticker_target_price, 'cron',day_of_week='tue-sat', hour=0, minute=30)
             scheduler.add_job(update_stock_recommendations, 'cron',day_of_week='tue-sat', hour=0, minute=30)
@@ -2402,7 +2554,8 @@ def start_import_schedulers():
             #calculate_continuous_metrics(TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS)
             #analyze_option_sentiment()
             #calc_ratio_discounts()
-            calculate_rdcf_valuation()
+            #calculate_rdcf_valuation()
+            #calculate_fundament_change()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
             
             pass

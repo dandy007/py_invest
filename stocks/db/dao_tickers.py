@@ -215,6 +215,10 @@ class DAO_Tickers:
             ticker.predict_eps_cagr = row[37]
         if len(row) > 48:
             ticker.r_dcf = row[48]
+        if len(row) > 49:
+            ticker.fundament_change = row[49]
+        if len(row) > 50:
+            ticker.last_q_yoy_rev_growth = row[50]
         
         return ticker
 
