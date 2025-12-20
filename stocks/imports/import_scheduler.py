@@ -438,6 +438,76 @@ def download_prices(input_ticker_id_list=None):
         traceback.print_exc()
     logger.info(f"download_prices - End")
 
+def calculate_stddev(input_ticker_id_list=None):
+    """
+    Calculate standard deviation based on TradingView Deviation Bands logic.
+    Uses WMA 200 and StdDev 1200 of relative deviation from mean.
+    """
+    logger.info(f"calculate_stddev - Start")
+    try:
+        connection = DB.get_connection_mysql()
+        dao_tickers = DAO_Tickers(connection)
+        dao_tickers_data = DAO_TickersData(connection)
+
+        tickers = dao_tickers.select_tickers_all__limited_ids()
+        if input_ticker_id_list is not None:
+            tickers = input_ticker_id_list
+
+        counter = 0
+        for ticker_id in tickers:
+            counter += 1
+            try:
+                # Need ~1400 points (1200 for StdDev + 200 for WMA)
+                history_data = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 1500)
+                
+                if len(history_data) >= 1400:
+                    # History is date descending, reverse to ascending
+                    hist_vals = [d.value for d in history_data]
+                    hist_vals.reverse()
+                    
+                    df_price = pd.Series(hist_vals)
+                    
+                    # WMA 200 (Weights: 1, 2, ..., 200)
+                    weights = np.arange(1, 201)
+                    wma = df_price.rolling(200).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+                    
+                    # Relative Deviation: ma_d = (Price - WMA) / WMA
+                    ma_d = (df_price - wma) / wma
+                    
+                    # StdDev of Deviation (Length 1200)
+                    stdev_series = ma_d.rolling(1200).std()
+                    
+                    current_price = df_price.iloc[-1]
+                    current_ma = wma.iloc[-1]
+                    current_stdev_val = stdev_series.iloc[-1]
+                    
+                    if not np.isnan(current_stdev_val) and not np.isnan(current_ma) and current_stdev_val != 0:
+                        # Calculate how many standard deviations current price is from WMA
+                        # stdev_series is the std of relative deviation (ma_d)
+                        # current deviation from mean
+                        current_deviation = (current_price - current_ma) / current_ma
+                        # Normalized: how many std devs away
+                        normalized_stddev = current_deviation / current_stdev_val
+                        
+                        dict_data_stddev = {
+                            TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__STDDEV: normalized_stddev
+                        }
+                        dao_tickers.update_ticker_types(ticker_id, dict_data_stddev, True)
+                        logger.info(f"calculate_stddev: Updated {ticker_id} {counter}/{len(tickers)} stddev={normalized_stddev:.4f}")
+                    else:
+                        logger.warning(f"calculate_stddev: {ticker_id} - NaN result")
+                else:
+                    logger.warning(f"calculate_stddev: {ticker_id} - Not enough data ({len(history_data)}/1400)")
+
+            except Exception as e:
+                logger.error(f"calculate_stddev error {ticker_id}: {e}")
+                continue
+
+    except Exception as e:
+        logger.error(f"calculate_stddev - Error {e}")
+        traceback.print_exc()
+    logger.info(f"calculate_stddev - End")
+
 def update_ticker_target_price(input_ticker_id_list=None):
     logger.info(f"update_ticker_target_price - Start")
     try:
@@ -2509,6 +2579,7 @@ def start_import_schedulers():
             scheduler.add_job(calculate_fundament_change, 'cron', day_of_week='sat', hour=3, minute=0)
             
             scheduler.add_job(download_prices, 'cron',day_of_week='tue-sat', hour=0, minute=30)
+            scheduler.add_job(calculate_stddev, 'cron',day_of_week='tue-sat', hour=0, minute=30)
             scheduler.add_job(update_ticker_target_price, 'cron',day_of_week='tue-sat', hour=0, minute=30)
             scheduler.add_job(update_stock_recommendations, 'cron',day_of_week='tue-sat', hour=0, minute=30)
             scheduler.add_job(update_stock_predictions, 'cron',day_of_week='sat', hour=3, minute=30)
@@ -2556,6 +2627,7 @@ def start_import_schedulers():
             #calc_ratio_discounts()
             #calculate_rdcf_valuation()
             #calculate_fundament_change()
+            #calculate_stddev()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
             
             pass

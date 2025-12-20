@@ -40,6 +40,7 @@ class ROW_Tickers:
     r_dcf = None
     fundament_change = None
     last_q_yoy_rev_growth = None
+    stddev = None
 
     def __init__(self):
         pass

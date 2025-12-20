@@ -219,6 +219,8 @@ class DAO_Tickers:
             ticker.fundament_change = row[49]
         if len(row) > 50:
             ticker.last_q_yoy_rev_growth = row[50]
+        if len(row) > 51:
+            ticker.stddev = row[51]
         
         return ticker
 
