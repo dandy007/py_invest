@@ -1,0 +1,62 @@
+SYMBOL_TO_COT = {
+    "USD": 'DX',
+    "USX": 'DX',
+    "EUR": 'E6',
+    "GBP": 'B6',
+    "AUD": 'A6',
+    "NZD": 'N6',
+    "MXN": 'M6',
+    "CHF": 'S6',
+    "CAD": 'D6',
+    "JPY": 'J6',
+    "XAG": 'SI',
+    "XAU": 'GC',
+    "ZAR": 'T6',
+
+    "ES": 'ES',
+    "ZM": 'ZM',
+    "ALI": 'MWP',
+    "GC": 'GC',
+    "ZL": 'ZL',
+    "KE": 'KE',
+    "PL": 'PL',
+    "SIL": 'SI',
+    "HE": 'HE',
+    "ZC": 'ZC',
+    "ZO": 'ZO',
+    "SB": 'SB',
+    "CT": 'CT',
+    "ZS": 'ZS',
+    "LB": 'LS',
+    "LE": 'LE',
+    "NG": 'NG',
+    "CL": 'CL',
+    "OJ": 'OJ',
+    "KC": 'KC',
+    "HG": 'HG',
+    "GF": 'GF',
+    "ZR": 'ZR',
+    "PA": 'PA',
+    "CC": 'CC',
+    "NQ": 'NQ',
+    "BZ": 'BZ',
+    "RB": 'RB',
+    "XPT": 'PL',
+    "XPD": 'PA'
+}
+
+
+FOREX_LIST = [
+    'USDJPY', 'USDCAD', 'USDCHF', 'USDMXN', 'XAUUSD', 'EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'XAGUSD', 'XPTUSD', 'XPDUSD', 
+    'EURJPY', 'EURAUD', 'EURGBP', 'EURCAD', 'EURCHF', 'EURNZD', 'EURZAR', 'EURMXN', 'XAUEUR', 'XAGEUR', 
+    'GBPJPY', 'GBPAUD', 'GBPCAD', 'GBPNZD', 'GBPCHF', 'GBPMXN', 'XAUGBP', 
+    'AUDJPY', 'AUDCAD', 'AUDNZD', 'AUDCHF', 'XAUAUD', 'XAGAUD',
+    'NZDJPY', 'NZDCAD', 'NZDCHF', 
+    'MXNJPY', 'CADMXN',
+    'CHFJPY', 'CADCHF', 'XAUCHF',
+    'CADJPY',
+    'XAUJPY',
+    'ZARJPY'
+]
+COMMODITY_LIST = ['ESUSD', 'ZMUSD', 'ALIUSD', 'GCUSD', 'ZLUSX', 'KEUSX', 'PLUSD', 'SILUSD', 'HEUSX', 'ZCUSX', 'ZOUSX', 'SBUSX', 'CTUSX', 'ZSUSX', 'LBUSD', 'LEUSX', 'NGUSD', 'CLUSD', 'OJUSX', 'KCUSX', 'HGUSD', 'GFUSX', 'ZRUSD', 'PAUSD', 'CCUSD', 'NQUSD', 'BZUSD', 'RBUSD']
+COT_LIST = ['NG', 'A6', 'PA', 'CC', 'T6', 'OJ', 'ZM', 'KC', 'ZC', 'CT', 'LE', 'ZW', 'ZO', 'E6','KE', 'BP', 'PL', 'GC', 'D6', 'SB', 'LS', 'M6', 'NQ', 'MWP', 'HE', 'N6', 'CL', 'SI', 'ZL', 'GF', 'J6', 'ZR', 'RB', 'B6', 'BZ', 'GM', 'DX', 'S6', 'HG', 'ZS', 'ES', 'NQ']

@@ -8,3 +8,11 @@ flask
 bokeh
 polygon-api-client
 plotly
+fmpsdk
+statsmodels
+pybit
+lxml
+fastapi
+uvicorn
+openai
+pyyaml

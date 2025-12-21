@@ -1,0 +1,110 @@
+def calc_seasonality():
+    logger.info(f"calc_seasonality - Start")
+    try:
+
+        ACCOUNT = '101-004-13023152-001'
+        api = v20.Context(hostname='api-fxpractice.oanda.com', token='f286b8d1bb981145b57ffae9991d5b18-e99cb031983f5f0e20245bf3b9e282a1', application='OandaPriceDataFetcher')
+        instruments_response = api.account.instruments(ACCOUNT)
+        #instruments = api.pricing.get(ACCOUNT)
+        instr_list = []
+
+        if instruments_response != None:
+            instr_list = instruments_response.body['instruments']
+
+        connection = DB.get_connection_mysql()  
+        dao_tickers = DAO_Tickers(connection)
+        dao_tickers_data = DAO_TickersData(connection)
+
+        db_ticker_list = dao_tickers.select_tickers_all__limited_ids()
+        #db_ticker_list = ['WPM']
+        today = datetime.today().date()
+
+        counter = 0
+        for ticker in instr_list:
+            counter += 1
+            logger.info(f"calc_seasonality - {ticker.name} {counter}/{len(db_ticker_list)}")
+
+            price_data = []
+
+            price_list = api.instrument.candles(ticker.name, granularity='M', count=5000)
+            price_list.sort(key=lambda x: x.date, reverse=False)
+
+            if len(price_list):
+                for price in price_list:
+                    price_data.append([price.date, price.value])
+
+            df = pd.DataFrame(price_data, columns=['Date', 'Close'])
+            df['Date'] = pd.to_datetime(df['Date'])
+            df.set_index('Date', inplace=True)
+            
+            # Přidání sloupců 'Year' a 'Month'
+            df['Year'] = df.index.year
+            df['Month'] = df.index.month
+
+            # Inicializace DataFrame pro ukládání výsledků
+            results = []
+
+            for month in range(1, 13):
+                monthly_changes = []
+                
+                # Filtrace dat pro daný měsíc ve všech letech
+                for year in df['Year'].unique():
+                    monthly_data = df[(df['Month'] == month) & (df['Year'] == year)]
+                    
+                    if len(monthly_data) > 1:  # Pokud máme data pro tento měsíc a rok
+                        start_price = monthly_data['Close'].iloc[0]
+                        end_price = monthly_data['Close'].iloc[-1]
+                        percent_change = ((end_price - start_price) / start_price)
+                        monthly_changes.append(percent_change)
+                
+                if monthly_changes:
+                    # Výpočet průměrného procentuálního nárůstu za posledních X let
+                    relevant_changes = monthly_changes[-99:]  # Posledních X let
+                    average_change = np.mean(relevant_changes)
+
+                    # Výpočet standardní odchylky procentuální změny
+                    std_dev = np.std(monthly_changes)
+                    cv = std_dev / average_change if average_change != 0 else np.nan
+                    
+                    # Výpočet R^2 hodnoty pro změny
+                    X = np.arange(len(relevant_changes)).reshape(-1, 1)
+                    y = np.array(relevant_changes)
+                    
+                    if len(relevant_changes) > 1:
+                        X = add_constant(X)  # Přidání konstanty pro intercept
+                        model = OLS(y, X).fit()
+                        r_square = model.rsquared
+                    else:
+                        r_square = np.nan  # Pokud máme jen jednu hodnotu, R^2 není definováno
+                    
+                    # Přidání výsledků do seznamu
+                    results.append({
+                        'month': month,
+                        'chg': average_change,
+                        'stdev': std_dev,
+                        'cov': cv,
+                        'r2': r_square
+                    })
+                else:
+                    # Pokud nejsou data pro tento měsíc, přidáme NaN
+                    results.append({
+                        'month': month,
+                        'chg': np.nan,
+                        'stdev': np.nan,
+                        'cov': np.nan,
+                        'r2': np.nan
+                    })
+    
+            # Převod výsledků na DataFrame
+            #print(results)
+            #results_df = pd.DataFrame(results)
+            
+            #return results
+            for result in results:
+                if  (abs(result['chg']) > 0.05) and (abs(result['stdev']) < 0.05 or abs(result['cov']) < 1 or result['r2'] > 0.5):
+                    print(f"{ticker} {result}")
+
+
+    except Exception as e:
+        logger.error(f"calc_seasonality - Error {e}")
+    logger.info(f"calc_seasonality - End")

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/css.css') }}">
+</head>
+<body>
+    <h1>Trading</h1>
+    <table class="trading-table">
+        <thead>
+            <th>Symbol</th>
+            <th>COT longterm</th>
+            <th>COT shortterm</th>
+            <th>VWMA PROB LONGTERM</th>
+            <th>VWMA PROB SHORTERM</th>
+            <th>ENGULF MONTH</th>
+            <th>ENGULF WEEK</th>
+            <th>ENGULF DAY</th>
+            <th>ENGULF 4h</th>
+            <th>ENGULF 1h</th>
+            <th>ENGULF 5m</th>
+            <th>TOTAL</th>
+        </thead>
+        {% for symbol_record in symbol_list %}
+        <tr>
+            <td>{{symbol_record.symbol}}</td>
+            <td class="
+            {% if symbol_record.cot_longterm == 0 %}
+                neutral
+            {% elif 0 < symbol_record.cot_longterm <= 2 %}
+                bull
+            {% elif 2 < symbol_record.cot_longterm %}
+                bull_extra
+            {% elif 0 > symbol_record.cot_longterm <= -2 %}
+                bear
+            {% elif -2 > symbol_record.cot_longterm %}
+                bear_extra
+            {% endif %}
+        ">{{symbol_record.cot_longterm}}</td>
+            <td class="
+            {% if symbol_record.cot_shortterm == 0 %}
+                neutral
+            {% elif 0 < symbol_record.cot_shortterm <= 2 %}
+                bull
+            {% elif 2 < symbol_record.cot_shortterm %}
+                bull_extra
+            {% elif 0 > symbol_record.cot_shortterm >= -2 %}
+                bear
+            {% elif -2 > symbol_record.cot_shortterm %}
+                bear_extra
+            {% endif %}
+        ">{{symbol_record.cot_shortterm}}</td>
+            <td>{{symbol_record.vwma_prob[0]}}</td>
+            <td>{{symbol_record.vwma_prob[1]}}</td>
+            <td class="
+            {% if symbol_record.engulf_month == 0 %}
+                neutral
+            {% elif symbol_record.engulf_month > 0 %}
+                bull
+            {% elif symbol_record.engulf_month < 0 %}
+                bear
+            {% endif %}
+        ">{{symbol_record.engulf_month}}</td>
+            <td class="
+            {% if symbol_record.engulf_week == 0 %}
+                neutral
+            {% elif symbol_record.engulf_week > 0 %}
+                bull
+            {% elif symbol_record.engulf_week < 0 %}
+                bear
+            {% endif %}
+        ">{{symbol_record.engulf_week}}</td>
+            <td class="
+            {% if symbol_record.engulf_day == 0 %}
+                neutral
+            {% elif symbol_record.engulf_day > 0 %}
+                bull
+            {% elif symbol_record.engulf_day < 0 %}
+                bear
+            {% endif %}
+        ">{{symbol_record.engulf_day}}</td>
+        <td class="
+            {% if symbol_record.engulf_4h == 0 %}
+                neutral
+            {% elif symbol_record.engulf_4h > 0 %}
+                bull
+            {% elif symbol_record.engulf_4h < 0 %}
+                bear
+            {% endif %}
+        ">{{symbol_record.engulf_4h}}</td>
+        <td class="
+        {% if symbol_record.engulf_1h == 0 %}
+            neutral
+        {% elif symbol_record.engulf_1h > 0 %}
+            bull
+        {% elif symbol_record.engulf_1h < 0 %}
+            bear
+        {% endif %}
+    ">{{symbol_record.engulf_1h}}</td>
+    <td class="
+        {% if symbol_record.engulf_5m == 0 %}
+            neutral
+        {% elif symbol_record.engulf_5m > 0 %}
+            bull
+        {% elif symbol_record.engulf_5m < 0 %}
+            bear
+        {% endif %}
+    ">{{symbol_record.engulf_5m}}</td>
+            <td class="
+            {% if symbol_record.total == 0 %}
+                neutral
+            {% elif 0 < symbol_record.total <= 4 %}
+                bull
+            {% elif 4 < symbol_record.total %}
+                bull_extra
+            {% elif 0 > symbol_record.total >= -4 %}
+                bear
+            {% elif -4 > symbol_record.total %}
+                bear_extra
+            {% endif %}
+        ">{{symbol_record.total}}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

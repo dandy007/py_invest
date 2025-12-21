@@ -4,6 +4,9 @@ from datetime import datetime
 
 from .fmp_metrics import FMP_Metrics
 from dotenv import load_dotenv
+import pandas as pd
+
+import fmpsdk
 
 load_dotenv()
 
@@ -18,6 +21,75 @@ class FMP:
     def __init__(self):
         pass
 
+    def get_statement_symbols_list(self) -> list[str]:
+        return fmpsdk.financial_statement_symbol_lists(os.getenv("FMP_API_KEY"))
+    
+    def get_symbols_list(self, exchange):
+        url = f'https://financialmodelingprep.com/api/v3/symbol/{exchange}?apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
+
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
+    
+    def get_stock_profile(self, ticker_id: str):
+        return fmpsdk.company_profile(os.getenv("FMP_API_KEY"), ticker_id)
+    
+    def get_stock_price_target(self, ticker_id: str) -> float:
+        url = f'https://financialmodelingprep.com/api/v4/price-target-summary?symbol={ticker_id}&apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
+
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
+
+    def get_earnings_calendar(self, from_date: str, to_date: str):
+        return fmpsdk.earning_calendar(os.getenv("FMP_API_KEY"), from_date, to_date)
+    
+    def get_recommendations(self, ticker_id: str):
+        url = f'https://financialmodelingprep.com/api/v3/analyst-stock-recommendations/{ticker_id}?apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
+
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
+    
+    def get_predictions(self, ticker_id: str):
+        url = f'https://financialmodelingprep.com/api/v3/analyst-estimates/{ticker_id}?apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
+
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
+    
+    def get_income_statement(self, ticker_id: str, quaterly: bool, limit: int = 100):
+        return fmpsdk.income_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', limit)
+    
+    def get_balance_sheet_statement(self, ticker_id: str, quaterly: bool, limit: int = 100):
+        return fmpsdk.balance_sheet_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', limit)
+    
+    def get_cash_flow_statement(self, ticker_id: str, quaterly: bool, limit: int = 100):
+        return fmpsdk.cash_flow_statement(os.getenv("FMP_API_KEY"), ticker_id, 'quarter' if quaterly else 'annual', limit)
+    
+    #def get_historic_prices(self, ticker_id: str, from_date: str, to_date: str):
+    #    return fmpsdk.historical_price_full(os.getenv("FMP_API_KEY"), ticker_id, from_date, to_date)
+    
+    def get_historic_prices(self, ticker_id: str, from_date: str, to_date: str):
+        url = f'https://financialmodelingprep.com/stable/historical-price-eod/light?symbol={ticker_id}&from={from_date}&to={to_date}&apikey={os.getenv("FMP_API_KEY")}'
+        response = requests.get(url)
+
+        if (response.status_code == 200):
+            if 'application/json' in response.headers['Content-Type']:
+                return response.json()
+        return None
+    
+    def get_key_metrics_ttm(self, ticker_id: str):
+        return fmpsdk.key_metrics_ttm(os.getenv("FMP_API_KEY"), ticker_id, 100)
+    
 ####################################################################################################################################################
 
     def get_metrics(self, ticker_id: str) -> list[FMP_Metrics]:
@@ -57,7 +129,51 @@ class FMP:
         else:
             raise Exception("Status code <> 200")
     
+# TRADING ###################################################################################################################################################
+
+    def get_forex_list(self):
+        return fmpsdk.forex_list(os.getenv("FMP_API_KEY"))
+    
+    def get_commodities_list(self):
+        return fmpsdk.commodities_list(os.getenv("FMP_API_KEY"))
+    
+    def fetch_candles(self, symbol: str, time_delta: str, from_date: str, to_date: str):
+        if time_delta in ('D', 'W', 'M'):
+            daily_data = fmpsdk.historical_price_full(os.getenv("FMP_API_KEY"), symbol, from_date, to_date)
+            if time_delta == 'D':
+                return daily_data
+            else:
+                return aggregate_daily_candles(time_delta, daily_data)
+
+        return fmpsdk.historical_chart(os.getenv("FMP_API_KEY"), symbol, time_delta, from_date, to_date)
+    
+    def fetch_cot(self, symbol: str, from_date: str, to_date: str):
+        return fmpsdk.commitment_of_traders_report(os.getenv("FMP_API_KEY"), symbol, from_date, to_date)
+    
+    def fetch_cot_analysis(self, symbol: str, from_date: str, to_date: str):
+        return fmpsdk.commitment_of_traders_report_analysis(os.getenv("FMP_API_KEY"), symbol, from_date, to_date)
+
+
 ####################################################################################################################################################
+
+def aggregate_daily_candles(target_timeframe: str, daily_data: list):
+    df = pd.DataFrame(daily_data)
+
+    if 'date' not in df.columns:
+        return daily_data
+
+    df['date'] = pd.to_datetime(df['date'])
+    df.set_index('date', inplace=True)
+    target_ohlc = df.resample(target_timeframe).agg({
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last'
+    }).reset_index()
+
+    target_ohlc = target_ohlc.iloc[::-1]
+
+    return target_ohlc.to_dict('records')
 
 if __name__ == "__main__":
     pass

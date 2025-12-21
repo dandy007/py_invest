@@ -57,6 +57,15 @@ class DAO_TickersData:
         if forceCommit:
             self.conn.commit()
         return
+    
+    def delete(self, ticker_id: str, forceCommit: bool):
+        sql = f"DELETE FROM {self.table_name}" \
+        f" WHERE ticker_id=%s" 
+        values = (ticker_id,)
+        self.cursor.execute(sql, values)
+        if forceCommit:
+            self.conn.commit()
+        return
 
     def store_ticker_data(self, ticker_id: str, type: int, value: float, date: datetime.date) -> int:
         if date == None:
@@ -69,6 +78,12 @@ class DAO_TickersData:
                     record.value = value
                     self.insert_ticker_data(record, True)
                     return 1
+                elif value != None and value != record.value and record.date == date:
+                    record.value = value
+                    self.update_ticker_data(record, True)
+                    return 1
+                else:
+                    return 0
                 
             elif value not in (None, ''):
                 if isinstance(value, (str)) == False and math.isnan(value):

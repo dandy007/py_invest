@@ -1,6 +1,7 @@
 class ROW_Tickers:
 
     ticker_id = None
+    exchange = None
     name = None
     description = None
     industry = None
@@ -10,6 +11,9 @@ class ROW_Tickers:
     price = None
     target_price = None
     pe = None
+    ps = None
+    pb = None
+    pfcf = None
     recomm_mean = None
     recomm_count = None
     div_yield = None
@@ -24,12 +28,32 @@ class ROW_Tickers:
     price_discount_2 = None
     price_discount_3 = None
     eps_valuation = None
+    fcf_valuation = None
     pe_discount = None
+    ps_discount = None
     pb_discount = None
     pfcf_discount = None
     option_year_discount = None
     beta = None
-    description = None
+    predict_eps_cagr = None
+    predict_rev_cagr = None
+    r_dcf = None
+    fundament_change = None
+    last_q_yoy_rev_growth = None
+    stddev = None
+    roe = None
+    roa = None
+    roic = None
+    debt_to_equity = None
+    net_debt_ebitda = None
+    earnings_quality = None
+    cash_conversion = None
+    earnings_volatility = None
+    ev_ebitda = None
+    peg = None
+    week_52_position = None
+    volume_trend = None
+
 
     def __init__(self):
         pass
