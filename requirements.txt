@@ -14,3 +14,5 @@ pybit
 lxml
 fastapi
 uvicorn
+openai
+pyyaml
