@@ -16,3 +16,5 @@ fastapi
 uvicorn
 openai
 pyyaml
+GoogleNews
+playwright

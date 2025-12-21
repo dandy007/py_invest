@@ -4,6 +4,13 @@ Provides tool definitions and execution functions for querying the database.
 """
 import json
 from typing import Any, Optional
+from stocks.agent.news_tools import (
+    ArticleContentFetcher,
+    ArticleFetchConfig,
+    DependencyNotInstalledError,
+    NewsQueryConfig,
+    TickerNewsService,
+)
 from stocks.db.db import DB
 from stocks.db.dao_tickers import DAO_Tickers
 from stocks.db.dao_tickers_data import DAO_TickersData
@@ -138,6 +145,75 @@ TOOLS = [
                 "required": ["ticker_ids"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_ticker_news",
+            "description": "Search Google News for recent articles about a ticker. Useful for fetching sentiment/context data.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker_id": {
+                        "type": "string",
+                        "description": "Ticker symbol or company keyword to search for",
+                    },
+                    "lookback_days": {
+                        "type": "integer",
+                        "description": "How many days back to look for articles",
+                        "default": 7,
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of articles to return",
+                        "default": 20,
+                    },
+                    "lang": {
+                        "type": "string",
+                        "description": "ISO language code (e.g. en, cs, de)",
+                    },
+                    "region": {
+                        "type": "string",
+                        "description": "Region code (e.g. US, CZ, DE)",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Override the default query if you need a custom prompt",
+                    },
+                },
+                "required": ["ticker_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_article_content",
+            "description": "Load an article URL in a headless browser and return the rendered HTML/text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Full article URL to fetch",
+                    },
+                    "wait_selector": {
+                        "type": "string",
+                        "description": "Optional CSS selector that must appear before reading the page",
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "description": "Navigation timeout in milliseconds",
+                        "default": 20000,
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Trim HTML/text to this many characters to keep responses smaller",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
     }
 ]
 
@@ -170,6 +246,8 @@ class DBTools:
         self.conn = None
         self.dao_tickers = None
         self.dao_data = None
+        self.news_service = TickerNewsService()
+        self.article_fetcher = ArticleContentFetcher()
     
     def _ensure_connection(self):
         """Ensure database connection is established."""
@@ -199,6 +277,10 @@ class DBTools:
                 return self._search_tickers(**arguments)
             elif tool_name == "compare_tickers":
                 return self._compare_tickers(**arguments)
+            elif tool_name == "search_ticker_news":
+                return self._search_ticker_news(**arguments)
+            elif tool_name == "fetch_article_content":
+                return self._fetch_article_content(**arguments)
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
         except Exception as e:
@@ -353,3 +435,52 @@ class DBTools:
                 results.append(result)
         
         return json.dumps({"metrics": metrics, "data": results}, ensure_ascii=False)
+
+    def _search_ticker_news(
+        self,
+        ticker_id: str,
+        lookback_days: int = 7,
+        max_results: int = 20,
+        lang: Optional[str] = None,
+        region: Optional[str] = None,
+        query: Optional[str] = None,
+    ) -> str:
+        """Use GoogleNews to fetch recent news for a ticker."""
+        config = NewsQueryConfig(
+            ticker=ticker_id,
+            lookback_days=lookback_days,
+            max_results=max_results,
+            lang=lang,
+            region=region,
+            query=query,
+        )
+
+        try:
+            records = self.news_service.fetch(config)
+            return json.dumps(
+                {"ticker_id": ticker_id.upper(), "count": len(records), "data": records},
+                ensure_ascii=False,
+            )
+        except DependencyNotInstalledError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+    def _fetch_article_content(
+        self,
+        url: str,
+        wait_selector: Optional[str] = None,
+        timeout_ms: int = 20000,
+        max_chars: Optional[int] = None,
+    ) -> str:
+        """Fetch the rendered HTML/text of an article via Playwright."""
+        config = ArticleFetchConfig(
+            url=url,
+            wait_selector=wait_selector,
+            timeout_ms=timeout_ms,
+            max_chars=max_chars,
+        )
+
+        try:
+            payload = self.article_fetcher.fetch(config)
+            return json.dumps(payload, ensure_ascii=False)
+        except DependencyNotInstalledError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)

@@ -8,6 +8,7 @@
             "name": "Python Debugger: Module",
             "type": "debugpy",
             "request": "launch",
+            "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
             "module": "stocks.agent.db_agent"
             //"module": "stocks.http_server"
             //"module": "stocks.http_server_trading"

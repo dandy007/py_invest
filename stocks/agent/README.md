@@ -11,7 +11,8 @@ Interaktivní AI agent pro analýzu investičních dat z MySQL databáze.
 
 2. Nainstalujte závislosti:
    ```bash
-   pip install openai pyyaml
+   pip install openai pyyaml GoogleNews playwright
+   playwright install chromium
    ```
 
 ## Spuštění
@@ -70,6 +71,8 @@ Agent má přístup k následujícím databázovým nástrojům:
 3. **query_time_series** - Historická data (revenue, earnings, margins)
 4. **search_tickers** - Vyhledávání podle názvu/sektoru/industry
 5. **compare_tickers** - Porovnání více akcií
+6. **search_ticker_news** - Google News scraping pro aktuální články k tickeru (využívá knihovnu `GoogleNews`)
+7. **fetch_article_content** - Headless prohlížeč (Playwright) pro načtení kompletního obsahu článku včetně JavaScriptu (nezapomeňte po instalaci knihovny spustit `playwright install chromium`)
 
 ## Konfigurace
 
