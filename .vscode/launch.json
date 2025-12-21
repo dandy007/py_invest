@@ -8,7 +8,8 @@
             "name": "Python Debugger: Module",
             "type": "debugpy",
             "request": "launch",
-            "module": "stocks.http_server"
+            "module": "stocks.agent.db_agent"
+            //"module": "stocks.http_server"
             //"module": "stocks.http_server_trading"
             //"module": "stocks.crypto_client"
             //"module": "stocks.crypto_server"

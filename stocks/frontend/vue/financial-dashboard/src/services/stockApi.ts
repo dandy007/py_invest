@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { StockData } from '@/types/stock';
 
-const API_BASE_URL = 'http://192.168.2.168:5000'; // Configure base URL
+const API_BASE_URL = 'http://localhost:5000'; // Configure base URL
 
 export async function fetchStockDataById(tickerId: string): Promise<StockData> {
   if (!tickerId) {
