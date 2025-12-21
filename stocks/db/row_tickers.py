@@ -53,6 +53,8 @@ class ROW_Tickers:
     peg = None
     week_52_position = None
     volume_trend = None
+    sentiment = None
+    sentiment_date = None
 
 
     def __init__(self):

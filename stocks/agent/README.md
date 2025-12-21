@@ -102,3 +102,18 @@ personalities:
 - Historie konverzací se ukládá do `conversations.json`
 - Agent používá OpenRouter API, které podporuje většinu LLM modelů
 - SQL dotazy jsou omezeny na SELECT pro bezpečnost
+
+
+## Scheduled Sentiment Job
+
+Automatickou sentiment analyzu zajistuje skript `stocks.agent.sentiment_job`. Je pridan do APScheduleru (viz `stocks/imports/import_scheduler.py`) a uklada vysledky do sloupcu `tickers.sentiment` (0-100) a `tickers.sentiment_date`.
+Job postupne prochazi vsechny tickery s `market_cap >= min_market_cap` (default 1 000 000 000) a prazdnym nebo zastaralym `sentiment_date`. Tickery se zpracovavaji v davkach podle `max_tickers_per_run`, po kazde davce se seznam znovu nacte, dokud nejsou vsechny splnene tickery aktualizovany.
+Konfigurace se nastavuje v sekci `sentiment_job` v `config.yaml` (model, prompt, velikost davky, `min_market_cap`, `refresh_days` ktere definuji kolik dni stara data se maji obnovit).
+Pokud ma byt job aktivni, nastav `sentiment_job.enabled: true`. Rucni spusteni je mozne prikazem:
+
+```bash
+python -m stocks.agent.sentiment_job
+```
+
+Prompt muze pouzivat placeholdery `{ticker}`, `{lookback_days}` a `{max_articles}`. Naplanovany job se preskoci, pokud chybi `OPENROUTER_API_KEY`.
+

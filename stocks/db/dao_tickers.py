@@ -1,5 +1,8 @@
 import mysql
 import math
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Tuple
 from .row_tickers import ROW_Tickers
 from .constants import TICKERS__TYPE_TO_COLUMN__DICT
 from mysql.connector.pooling import PooledMySQLConnection
@@ -28,8 +31,9 @@ class DAO_Tickers:
     def update_ticker_types(self, ticker_id: str, types_dict, force_commit: bool):
         sql = f"update {self.db_name} set "
         values = []
+        accepted_types: Tuple[type, ...] = (int, float, str, datetime, date, Decimal)
         for type, value in types_dict.items():
-                if isinstance(value, (int, float, str)):
+                if isinstance(value, accepted_types):
                     type_column = TICKERS__TYPE_TO_COLUMN__DICT.get(type, None)
                     if type_column != None:
                         if len(values) > 0:
@@ -245,6 +249,10 @@ class DAO_Tickers:
             ticker.week_52_position = row[62]
         if len(row) > 63:
             ticker.volume_trend = row[63]
+        if len(row) > 64:
+            ticker.sentiment = row[64]
+        if len(row) > 65:
+            ticker.sentiment_date = row[65]
         
         return ticker
 

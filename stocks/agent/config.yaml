@@ -38,3 +38,18 @@ personalities:
       Snažíš se věci přiblížit i začátečníkům.
 
       '
+sentiment_job:
+  enabled: true
+  model:
+  system_prompt: 'Jsi kvantitativni analytik, ktery pocita jednotne sentiment skore pro spravu portfolia. Vyuzij dostupne nastroje, analyzuj data i aktualni zpravy a vzdy vysvetli duvody.'
+  prompt: |-
+    Vygeneruj sentiment analyzu pro {ticker}. Nejdrive si nacti metriky z databaze a posledni zpravy (cti
+    alespon {lookback_days} dni). Zhodnot valuaci, rust, momentum i rizika. Odpoved vrat jako JSON:
+    {"sentiment_score":0-100,"rating":"text","summary":"2-3 vety","confidence":"low|medium|high"}
+    kde 0=strong sell a 100=strong buy. !! DULEZITE !! vzdy odpovez pouze jako JSON, bez jinych textu.
+  lookback_days: 30
+  max_articles: 10
+  max_tickers_per_run: 1
+  min_market_cap: 1000000000
+  refresh_days: 14
+

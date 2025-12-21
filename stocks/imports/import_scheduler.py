@@ -2,11 +2,11 @@ from stocks.data_providers.alpha_vantage import get_tickers_download, get_earnin
 from stocks.exporters.ical_exporter import export_earnings
 from apscheduler.schedulers.background import BackgroundScheduler
 from sklearn.linear_model import LinearRegression
+from stocks.agent.sentiment_job import run_sentiment_job
 from stocks.db import DAO_Tickers, ROW_Tickers, DB, ROW_TickersData, DAO_TickersData, DAO_Portfolios, ROW_Portfolios, ROW_PortfolioPositions, DAO_PortfolioPositions, TICKERS_TIME_DATA__TYPE__CONST, FUNDAMENTAL_NAME__TO_TYPE__ANNUAL, FUNDAMENTAL_NAME__TO_TYPE__QUATERLY
 from stocks.data_providers.fmp import FMP, FMP_Metrics, FMPException_LimitReached
 import logging
 from logging.handlers import RotatingFileHandler
-import yfinance as yf
 import pandas as pd
 import math
 import re
@@ -2786,6 +2786,7 @@ def start_import_schedulers():
             scheduler.add_job(calculate_financial_ratios, 'cron', day_of_week='tue-sat', hour=12, minute=30)
 
             scheduler.add_job(calc_ratio_discounts, 'cron',day_of_week='tue-sat', hour=12, minute=30)
+            scheduler.add_job(run_sentiment_job, 'cron', hour=0, minute=30, id='sentiment_job')
 
             scheduler.start()
 
@@ -2816,6 +2817,7 @@ def start_import_schedulers():
             #calculate_stddev()
             #calculate_financial_ratios()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
+            run_sentiment_job()
             
             pass
 

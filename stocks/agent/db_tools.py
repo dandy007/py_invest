@@ -357,6 +357,8 @@ class DBTools:
             "stddev": ticker.stddev,
             "predict_rev_cagr": ticker.predict_rev_cagr,
             "predict_eps_cagr": ticker.predict_eps_cagr,
+            "sentiment": ticker.sentiment,
+            "sentiment_date": ticker.sentiment_date.isoformat() if hasattr(ticker.sentiment_date, "isoformat") else ticker.sentiment_date,
         }
         
         # Round floats

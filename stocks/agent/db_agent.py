@@ -11,7 +11,6 @@ from openai import OpenAI
 
 # 1. Basic paths
 AGENT_DIR = Path(__file__).parent.resolve()
-CONFIG_FILE = AGENT_DIR / "config.yaml"
 CONVERSATIONS_FILE = AGENT_DIR / "conversations.json"
 STOCKS_DIR = AGENT_DIR.parent
 ROOT_DIR = STOCKS_DIR.parent
@@ -36,32 +35,8 @@ else:
     load_dotenv() # Fallback
 
 # 4. App imports
+from stocks.agent.config_loader import load_config, save_config
 from stocks.agent.db_tools import TOOLS, DBTools
-
-
-def load_config() -> dict:
-    """Load configuration from YAML file."""
-    import yaml
-    if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
-    return {
-        "model": "google/gemini-2.0-flash-001",
-        "personalities": {
-            "default": {
-                "name": "Analyst",
-                "system_prompt": "Jsi profesionální finanční analytik. Odpovídáš věcně a stručně. Používáš data z databáze k podpoře svých tvrzení."
-            }
-        },
-        "active_personality": "default"
-    }
-
-
-def save_config(config: dict):
-    """Save configuration to YAML file."""
-    import yaml
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-        yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
 
 
 def load_conversations() -> dict:

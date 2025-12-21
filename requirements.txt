@@ -18,3 +18,4 @@ openai
 pyyaml
 GoogleNews
 playwright
+websockets>=11,<12
