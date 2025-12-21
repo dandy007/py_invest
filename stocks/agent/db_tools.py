@@ -3,6 +3,7 @@ Database Tools for the DB Analysis Agent.
 Provides tool definitions and execution functions for querying the database.
 """
 import json
+from datetime import datetime, timezone
 from typing import Any, Optional
 from stocks.agent.news_tools import (
     ArticleContentFetcher,
@@ -215,6 +216,19 @@ TOOLS = [
             },
         },
     }
+    ,
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_date",
+            "description": "Return the current UTC date (YYYY-MM-DD). Use this to timestamp reports or outputs.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    }
 ]
 
 # Mapping from data_type string to constant
@@ -281,6 +295,8 @@ class DBTools:
                 return self._search_ticker_news(**arguments)
             elif tool_name == "fetch_article_content":
                 return self._fetch_article_content(**arguments)
+            elif tool_name == "get_current_date":
+                return self._get_current_date()
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
         except Exception as e:
@@ -488,3 +504,8 @@ class DBTools:
             return json.dumps(payload, ensure_ascii=False)
         except DependencyNotInstalledError as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+    def _get_current_date(self) -> str:
+        """Return the current UTC date."""
+        today = datetime.now(timezone.utc).date().isoformat()
+        return json.dumps({"today": today}, ensure_ascii=False)

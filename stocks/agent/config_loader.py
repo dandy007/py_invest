@@ -48,6 +48,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "refresh_days": 1,
         "min_market_cap": 0,
     },
+    "tool_logging": {
+        "enabled": True,
+        "log_arguments": True,
+        "log_response": True,
+        "max_response_chars": 1200,
+    },
 }
 
 

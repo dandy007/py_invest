@@ -298,6 +298,7 @@ class SentimentJob:
         ]
 
         response_text, news_count, had_news_error = self._chat_with_tools(messages)
+        self._log_llm_output(ticker_id, response_text)
         if had_news_error:
             logger.warning(
                 "Sentiment job: skipping %s because news fetch failed in tool call.",
@@ -401,6 +402,7 @@ class SentimentJob:
                     except json.JSONDecodeError:
                         func_args = {}
                     result = self.db_tools.execute_tool(func_name, func_args)
+                    self._log_tool_call(func_name, tool_call.function.arguments or "", result)
                     if func_name == "search_ticker_news":
                         try:
                             parsed = json.loads(result)
@@ -438,6 +440,28 @@ class SentimentJob:
                 "Sentiment job: fallback news fetch failed for %s: %s", ticker_id, exc
             )
             return 0
+
+    # --------------------------------------------------------------------- #
+    def _log_llm_output(self, ticker_id: str, response_text: str) -> None:
+        snippet = self._truncate_text(response_text)
+        logger.info("Sentiment job: LLM output for %s: %s", ticker_id, snippet)
+
+    def _log_tool_call(self, name: str, args: str, result: str) -> None:
+        logger.info(
+            "Sentiment job tool: %s args=%s result=%s",
+            name,
+            self._truncate_text(args),
+            self._truncate_text(result),
+        )
+
+    @staticmethod
+    def _truncate_text(data: Optional[str], limit: int = 2000) -> str:
+        if not data:
+            return ""
+        data = data.strip()
+        if len(data) <= limit:
+            return data
+        return data[:limit] + "...(truncated)"
 
     # --------------------------------------------------------------------- #
     @staticmethod

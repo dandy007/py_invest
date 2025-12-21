@@ -60,6 +60,11 @@ class DBAgent:
         self.config = load_config()
         self.conv_data = load_conversations()
         self.db_tools = DBTools()
+        tool_cfg = self.config.get("tool_logging") or {}
+        self.tool_logging_enabled = bool(tool_cfg.get("enabled", True))
+        self.tool_logging_log_args = bool(tool_cfg.get("log_arguments", True))
+        self.tool_logging_log_response = bool(tool_cfg.get("log_response", True))
+        self.tool_logging_max_chars = int(tool_cfg.get("max_response_chars", 0) or 0)
         
         # Initialize OpenAI client for OpenRouter
         api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -257,7 +262,7 @@ Když uživatel požádá o analýzu, použij dostupné nástroje k získání d
                 # Add assistant message with tool calls
                 self.messages.append({
                     "role": "assistant",
-                    "content": assistant_message.content,
+                    "content": self._format_message_content(assistant_message),
                     "tool_calls": [
                         {
                             "id": tc.id,
@@ -276,8 +281,8 @@ Když uživatel požádá o analýzu, použij dostupné nástroje k získání d
                     func_name = tool_call.function.name
                     func_args = json.loads(tool_call.function.arguments)
                     
-                    print(f"  📊 Volám: {func_name}...")
                     result = self.db_tools.execute_tool(func_name, func_args)
+                    self._log_tool_call(func_name, func_args, result)
                     
                     self.messages.append({
                         "role": "tool",
@@ -296,7 +301,7 @@ Když uživatel požádá o analýzu, použij dostupné nástroje k získání d
                 assistant_message = response.choices[0].message
             
             # Final response
-            final_content = assistant_message.content or ""
+            final_content = self._format_message_content(assistant_message)
             self.messages.append({"role": "assistant", "content": final_content})
             self._save_current_conversation()
             
@@ -306,6 +311,79 @@ Když uživatel požádá o analýzu, použij dostupné nástroje k získání d
             error_msg = f"❌ Chyba: {str(e)}"
             print(error_msg)
             return error_msg
+    
+    def _log_tool_call(self, name: str, arguments: dict, result: str) -> None:
+        if not self.tool_logging_enabled:
+            return
+
+        def truncate(text: str) -> str:
+            if self.tool_logging_max_chars and len(text) > self.tool_logging_max_chars:
+                return text[: self.tool_logging_max_chars] + "…"
+            return text
+
+        print(f"  [tool] {name}")
+        if self.tool_logging_log_args:
+            args_text = truncate(self._safe_json(arguments))
+            print(f"    args: {args_text}")
+        if self.tool_logging_log_response:
+            result_text = result if isinstance(result, str) else self._safe_json(result)
+            print(f"    result: {truncate(result_text)}")
+
+    @staticmethod
+    def _safe_json(payload) -> str:
+        try:
+            return json.dumps(payload, ensure_ascii=False)
+        except Exception:
+            return str(payload)
+
+    @staticmethod
+    def _format_message_content(message) -> str:
+        content = getattr(message, "content", "")
+        text = DBAgent._stringify_content(content)
+        if text:
+            return text
+
+        # Try pydantic dump for structured responses
+        fallback = []
+        for attr in ("refusal", "function_call", "tool_calls", "annotations"):
+            value = getattr(message, attr, None)
+            if value:
+                fallback.append(f"{attr}: {value}")
+        if fallback:
+            return "\n".join(str(part) for part in fallback)
+
+        try:
+            dump_method = getattr(message, "model_dump", None)
+            if callable(dump_method):
+                payload = dump_method()
+                content = payload.get("content")
+                text = DBAgent._stringify_content(content)
+                if text:
+                    return text
+                return json.dumps(payload, ensure_ascii=False)
+        except Exception:
+            pass
+
+        return ""
+
+    @staticmethod
+    def _stringify_content(content) -> str:
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "text" and "text" in block:
+                        parts.append(str(block["text"]))
+                    elif "content" in block:
+                        parts.append(str(block["content"]))
+                else:
+                    parts.append(str(block))
+            return "\n".join(part for part in parts if part).strip()
+        if content is None:
+            return ""
+        return str(content).strip()
     
     def run(self):
         """Main interaction loop."""

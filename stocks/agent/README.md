@@ -73,6 +73,7 @@ Agent má přístup k následujícím databázovým nástrojům:
 5. **compare_tickers** - Porovnání více akcií
 6. **search_ticker_news** - Čerstvé články z FMP API (`stable/news/stock`)
 7. **fetch_article_content** - Headless prohlížeč (Playwright) pro načtení kompletního obsahu článku včetně JavaScriptu (nezapomeňte po instalaci knihovny spustit `playwright install chromium`)
+8. **get_current_date** - Vrací aktuální UTC datum v JSON formátu `{"today": "YYYY-MM-DD"}`
 
 ## Konfigurace
 
@@ -86,7 +87,14 @@ personalities:
     name: "Display Name"
     system_prompt: |
       Váš custom system prompt...
+tool_logging:
+  enabled: true
+  log_arguments: true
+  log_response: true
+  max_response_chars: 1200
 ```
+
+Sekce `tool_logging` určuje, zda DB agent vypisuje každé volání nástroje (název, argumenty, zkrácený výsledek). Pokud potřebujete méně verbózní výstup, můžete `enabled` přepnout na `false` nebo snížit `max_response_chars`.
 
 ## Doporučené modely
 
