@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { StockData } from '@/types/stock';
 
-const API_BASE_URL = 'http://localhost:5000'; // Configure base URL
+const API_BASE_URL = 'http://192.168.0.169:5000'; // Configure base URL
 
 export async function fetchStockDataById(tickerId: string): Promise<StockData> {
   if (!tickerId) {
@@ -11,7 +11,7 @@ export async function fetchStockDataById(tickerId: string): Promise<StockData> {
     const response = await axios.get<StockData>(`${API_BASE_URL}/stock/${tickerId}`);
     // Basic validation (can be more thorough)
     if (!response.data || !response.data.TICKER) {
-        throw new Error('Invalid data received from API');
+      throw new Error('Invalid data received from API');
     }
     return response.data;
   } catch (error) {
