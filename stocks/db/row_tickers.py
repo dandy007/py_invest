@@ -41,6 +41,19 @@ class ROW_Tickers:
     fundament_change = None
     last_q_yoy_rev_growth = None
     stddev = None
+    roe = None
+    roa = None
+    roic = None
+    debt_to_equity = None
+    net_debt_ebitda = None
+    earnings_quality = None
+    cash_conversion = None
+    earnings_volatility = None
+    ev_ebitda = None
+    peg = None
+    week_52_position = None
+    volume_trend = None
+
 
     def __init__(self):
         pass

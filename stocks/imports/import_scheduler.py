@@ -2566,6 +2566,191 @@ def calculate_rdcf_valuation(input_ticker_id_list=None):
         traceback.print_exc()
     logger.info(f"calculate_rdcf_valuation - End")
 
+def calculate_financial_ratios(input_ticker_id_list=None):
+    """
+    Calculates financial ratios for all tickers:
+    - ROE, ROA, ROIC (efficiency metrics)
+    - Debt-to-Equity, Net Debt/EBITDA (leverage metrics)
+    - Earnings Quality, Cash Conversion, Earnings Volatility (quality metrics)
+    - EV/EBITDA, PEG (valuation metrics)
+    - 52W Position, Volume Trend (technical metrics)
+    """
+    logger.info(f"calculate_financial_ratios - Start")
+    try:
+        connection = DB.get_connection_mysql()
+        dao_tickers = DAO_Tickers(connection)
+        dao_tickers_data = DAO_TickersData(connection)
+
+        tickers = dao_tickers.select_tickers_all__limited_ids()
+        if input_ticker_id_list is not None:
+            tickers = input_ticker_id_list
+
+        counter = 0
+        for ticker_id in tickers:
+            counter += 1
+            logger.info(f"calculate_financial_ratios - {ticker_id} {counter}/{len(tickers)}")
+
+            try:
+                ticker = dao_tickers.select_ticker(ticker_id)
+                if ticker is None:
+                    continue
+
+                dict_data = {}
+
+                # ========== EFFICIENCY METRICS ==========
+                
+                # Get TTM data (last 4 quarters)
+                net_income_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.NET_INCOME_Q, 4)
+                equity_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.STOCKHOLDER_EQUITY_Q, 1)
+                total_assets_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_ASSETS_Q, 1)
+                ebitda_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.EBITDA_Q, 4)
+                current_liabilities_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CURRENT_LIABILITIES_Q, 1)
+                cash_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_Q, 1)
+                total_debt_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.TOTAL_DEBT_Q, 1)
+                op_cf_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.CASH_FLOW_CONTINUING_OPERATION_Q, 4)
+
+                # Calculate TTM Net Income
+                ttm_net_income = None
+                if len(net_income_list) >= 4:
+                    ttm_net_income = sum(item.value for item in net_income_list[:4])
+
+                # Calculate TTM EBITDA
+                ttm_ebitda = None
+                if len(ebitda_list) >= 4:
+                    ttm_ebitda = sum(item.value for item in ebitda_list[:4])
+
+                # Calculate TTM Operating Cash Flow
+                ttm_op_cf = None
+                if len(op_cf_list) >= 4:
+                    ttm_op_cf = sum(item.value for item in op_cf_list[:4])
+
+                # ROE = Net Income (TTM) / Stockholder Equity
+                if ttm_net_income is not None and len(equity_list) > 0 and equity_list[0].value and equity_list[0].value != 0:
+                    roe = ttm_net_income / equity_list[0].value
+                    dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__ROE] = roe
+
+                # ROA = Net Income (TTM) / Total Assets
+                if ttm_net_income is not None and len(total_assets_list) > 0 and total_assets_list[0].value and total_assets_list[0].value != 0:
+                    roa = ttm_net_income / total_assets_list[0].value
+                    dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__ROA] = roa
+
+                # ROIC = NOPAT / Invested Capital
+                # NOPAT ≈ EBITDA * 0.85 * 0.75 (approximating Operating Income from EBITDA, then applying tax)
+                # Invested Capital = Total Assets - Current Liabilities - Cash
+                if (ttm_ebitda is not None and 
+                    len(total_assets_list) > 0 and total_assets_list[0].value and
+                    len(current_liabilities_list) > 0 and current_liabilities_list[0].value is not None and
+                    len(cash_list) > 0 and cash_list[0].value is not None):
+                    
+                    nopat = ttm_ebitda * 0.85 * 0.75  # EBITDA -> EBIT -> NOPAT
+                    invested_capital = total_assets_list[0].value - current_liabilities_list[0].value - cash_list[0].value
+                    
+                    if invested_capital != 0:
+                        roic = nopat / invested_capital
+                        dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__ROIC] = roic
+
+                # ========== LEVERAGE METRICS ==========
+
+                # Debt-to-Equity
+                if (len(total_debt_list) > 0 and total_debt_list[0].value is not None and
+                    len(equity_list) > 0 and equity_list[0].value and equity_list[0].value != 0):
+                    debt_to_equity = total_debt_list[0].value / equity_list[0].value
+                    dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__DEBT_TO_EQUITY] = debt_to_equity
+
+                # Net Debt / EBITDA
+                if (ttm_ebitda is not None and ttm_ebitda != 0 and
+                    len(total_debt_list) > 0 and total_debt_list[0].value is not None and
+                    len(cash_list) > 0 and cash_list[0].value is not None):
+                    net_debt = total_debt_list[0].value - cash_list[0].value
+                    net_debt_ebitda = net_debt / ttm_ebitda
+                    dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__NET_DEBT_EBITDA] = net_debt_ebitda
+
+                # ========== QUALITY METRICS ==========
+
+                # Earnings Quality = (Net Income - Operating CF) / Total Assets
+                # Lower (more negative) is better - means more cash, less accruals
+                if (ttm_net_income is not None and ttm_op_cf is not None and
+                    len(total_assets_list) > 0 and total_assets_list[0].value and total_assets_list[0].value != 0):
+                    earnings_quality = (ttm_net_income - ttm_op_cf) / total_assets_list[0].value
+                    dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__EARNINGS_QUALITY] = earnings_quality
+
+                # Cash Conversion = Operating CF / Net Income
+                # Higher is better (>1 means generating more cash than accounting profit)
+                if ttm_net_income is not None and ttm_net_income != 0 and ttm_op_cf is not None:
+                    cash_conversion = ttm_op_cf / ttm_net_income
+                    dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__CASH_CONVERSION] = cash_conversion
+
+                # Earnings Volatility = StdDev of YoY EPS changes
+                eps_q_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.BASIC_EPS_Q, 20)
+                if len(eps_q_list) >= 8:  # Need at least 2 years for YoY
+                    yoy_changes = []
+                    for i in range(len(eps_q_list) - 4):
+                        curr = eps_q_list[i].value
+                        prev = eps_q_list[i + 4].value
+                        if prev is not None and prev != 0 and curr is not None:
+                            yoy_change = (curr - prev) / abs(prev)
+                            yoy_changes.append(yoy_change)
+                    
+                    if len(yoy_changes) >= 4:
+                        earnings_volatility = np.std(yoy_changes)
+                        dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__EARNINGS_VOLATILITY] = earnings_volatility
+
+                # ========== VALUATION METRICS ==========
+
+                # EV/EBITDA
+                # EV = Market Cap + Total Debt - Cash
+                if (ticker.market_cap is not None and ttm_ebitda is not None and ttm_ebitda > 0 and
+                    len(total_debt_list) > 0 and total_debt_list[0].value is not None and
+                    len(cash_list) > 0 and cash_list[0].value is not None):
+                    ev = ticker.market_cap + total_debt_list[0].value - cash_list[0].value
+                    ev_ebitda = ev / ttm_ebitda
+                    dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__EV_EBITDA] = ev_ebitda
+
+                # PEG = PE / (Growth Rate * 100)
+                if ticker.pe is not None and ticker.pe > 0 and ticker.predict_rev_cagr is not None and ticker.predict_rev_cagr > 0:
+                    peg = ticker.pe / (ticker.predict_rev_cagr * 100)
+                    dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__PEG] = peg
+
+                # ========== TECHNICAL METRICS ==========
+
+                # 52-Week Position = (Current - 52W Low) / (52W High - 52W Low)
+                price_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.PRICE, 260)
+                if len(price_list) >= 200:
+                    prices = [p.value for p in price_list if p.value is not None]
+                    if prices:
+                        current_price = prices[0]
+                        high_52w = max(prices)
+                        low_52w = min(prices)
+                        
+                        if high_52w != low_52w:
+                            week_52_position = (current_price - low_52w) / (high_52w - low_52w)
+                            dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__WEEK_52_POSITION] = week_52_position
+
+                # Volume Trend = Avg Volume (20 days) / Avg Volume (60 days)
+                volume_list = dao_tickers_data.select_ticker_data(ticker_id, TICKERS_TIME_DATA__TYPE__CONST.VOLUME, 60)
+                if len(volume_list) >= 60:
+                    volumes = [v.value for v in volume_list if v.value is not None]
+                    if len(volumes) >= 60:
+                        avg_20 = np.mean(volumes[:20])
+                        avg_60 = np.mean(volumes[:60])
+                        
+                        if avg_60 != 0:
+                            volume_trend = avg_20 / avg_60
+                            dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__VOLUME_TREND] = volume_trend
+
+                # Save all calculated metrics
+                if dict_data:
+                    dao_tickers.update_ticker_types(ticker_id, dict_data, True)
+
+            except Exception as e:
+                logger.error(f"calculate_financial_ratios - Error processing {ticker_id}: {e}")
+                continue
+
+    except Exception as e:
+        logger.error(f"calculate_financial_ratios - Error {e}")
+        traceback.print_exc()
+    logger.info(f"calculate_financial_ratios - End")
+
 def start_import_schedulers():
         #scheduler.add_job(notify_earnings, 'cron', second='*/10')
 
@@ -2598,6 +2783,7 @@ def start_import_schedulers():
             scheduler.add_job(calculate_continuous_metrics, 'cron', day_of_week='tue-sat', hour=12, minute=30, args=[TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__Q, TICKERS_TIME_DATA__TYPE__CONST.METRIC_PS__CONTINOUS])
             #scheduler.add_job(analyze_option_sentiment, 'cron', day_of_week='tue-sat', hour=12, minute=30)
             scheduler.add_job(calculate_rdcf_valuation, 'cron', day_of_week='tue-sat', hour=12, minute=30)
+            scheduler.add_job(calculate_financial_ratios, 'cron', day_of_week='tue-sat', hour=12, minute=30)
 
             scheduler.add_job(calc_ratio_discounts, 'cron',day_of_week='tue-sat', hour=12, minute=30)
 
@@ -2628,6 +2814,7 @@ def start_import_schedulers():
             #calculate_rdcf_valuation()
             #calculate_fundament_change()
             #calculate_stddev()
+            #calculate_financial_ratios()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
             
             pass

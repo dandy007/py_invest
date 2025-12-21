@@ -221,6 +221,30 @@ class DAO_Tickers:
             ticker.last_q_yoy_rev_growth = row[50]
         if len(row) > 51:
             ticker.stddev = row[51]
+        if len(row) > 52:
+            ticker.roe = row[52]
+        if len(row) > 53:
+            ticker.roa = row[53]
+        if len(row) > 54:
+            ticker.roic = row[54]
+        if len(row) > 55:
+            ticker.debt_to_equity = row[55]
+        if len(row) > 56:
+            ticker.net_debt_ebitda = row[56]
+        if len(row) > 57:
+            ticker.earnings_quality = row[57]
+        if len(row) > 58:
+            ticker.cash_conversion = row[58]
+        if len(row) > 59:
+            ticker.earnings_volatility = row[59]
+        if len(row) > 60:
+            ticker.ev_ebitda = row[60]
+        if len(row) > 61:
+            ticker.peg = row[61]
+        if len(row) > 62:
+            ticker.week_52_position = row[62]
+        if len(row) > 63:
+            ticker.volume_trend = row[63]
         
         return ticker
 
