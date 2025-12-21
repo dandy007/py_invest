@@ -447,7 +447,7 @@ class DBTools:
         region: Optional[str] = None,
         query: Optional[str] = None,
     ) -> str:
-        """Use GoogleNews to fetch recent news for a ticker."""
+        """Use FMP to fetch recent news for a ticker."""
         config = NewsQueryConfig(
             ticker=ticker_id,
             lookback_days=lookback_days,
@@ -464,6 +464,8 @@ class DBTools:
                 ensure_ascii=False,
             )
         except DependencyNotInstalledError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        except Exception as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
     def _fetch_article_content(

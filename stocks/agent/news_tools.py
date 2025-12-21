@@ -1,22 +1,16 @@
 """
-Helpers that let the DB agent retrieve market news via GoogleNews and
+Helpers that let the DB agent retrieve market news via FMP and
 download the full text of an article using a headless browser.
 """
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-# Optional imports – the agent should still boot even if dependencies
-# were not installed yet.  The actual methods will raise a helpful
-# error message when something is missing.
-try:
-    from GoogleNews import GoogleNews  # type: ignore
-except ImportError:  # pragma: no cover - dependency missing at runtime
-    GoogleNews = None  # type: ignore
+from stocks.data_providers.fmp import FMP, FMPException_LimitReached
 
+# Optional imports for article scraping
 try:
     from playwright.sync_api import (  # type: ignore
         TimeoutError as PlaywrightTimeoutError,
@@ -31,11 +25,6 @@ class DependencyNotInstalledError(RuntimeError):
     """Raised when an optional dependency is missing."""
 
 
-def _format_date(dt: datetime) -> str:
-    """Format datetimes the way GoogleNews expects (MM/DD/YYYY)."""
-    return dt.strftime("%m/%d/%Y")
-
-
 @dataclass
 class NewsQueryConfig:
     ticker: str
@@ -47,74 +36,81 @@ class NewsQueryConfig:
 
 
 class TickerNewsService:
-    """Wrapper above GoogleNews tailored for ticker centric queries."""
+    """Fetch ticker-centric news via FinancialModelingPrep."""
 
-    def __init__(self, default_lang: str = "en", default_region: str = "US"):
-        self.default_lang = default_lang
-        self.default_region = default_region
+    def __init__(self, fmp_client: Optional[FMP] = None):
+        self.fmp = fmp_client or FMP()
 
     def fetch(self, config: NewsQueryConfig) -> List[Dict]:
-        if GoogleNews is None:
-            raise DependencyNotInstalledError(
-                "GoogleNews package is missing. Install it with 'pip install GoogleNews'."
-            )
-
         lookback = max(1, config.lookback_days or 1)
-        query = (config.query or f"{config.ticker.upper()} stock").strip()
-        lang = (config.lang or self.default_lang).strip()
-        region = (config.region or self.default_region).strip()
+        limit = max(1, int(config.max_results or 1))
+        min_date = datetime.now(timezone.utc).replace(tzinfo=timezone.utc) - timedelta(days=lookback)
 
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=lookback)
+        try:
+            raw_items = self.fmp.get_stock_news(config.ticker, limit * 3)
+        except FMPException_LimitReached:
+            raise RuntimeError("FMP news API limit reached. Try again later.")
+        if raw_items is None:
+            return []
 
-        client = GoogleNews(lang=lang, region=region, encode="utf-8")
-        client.clear()
-        client.set_time_range(_format_date(start_date), _format_date(end_date))
-        client.search(query)
+        entries: List[Dict] = []
+        for item in raw_items:
+            normalized = self._normalize_record(config.ticker, config.query, item)
+            if not normalized:
+                continue
+            published_str = normalized.get("datetime") or normalized.get("published")
+            if published_str:
+                try:
+                    published_dt = datetime.fromisoformat(
+                        published_str.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    published_dt = None
+            else:
+                published_dt = None
 
-        # Pull enough pages to satisfy max_results (Google usually gives ~10/page)
-        desired = max(1, int(config.max_results or 1))
-        max_pages = min(10, math.ceil(desired / 10))
+            if published_dt and published_dt < min_date:
+                continue
 
-        for page in range(1, max_pages + 1):
-            try:
-                client.get_page(page)
-            except Exception:
+            entries.append(normalized)
+            if len(entries) >= limit:
                 break
-
-            if len(client.results()) >= desired:
-                break
-
-        entries = []
-        for item in client.results()[:desired]:
-            entries.append(self._normalize_record(config.ticker, query, item))
 
         return entries
 
     @staticmethod
-    def _normalize_record(ticker: str, query: str, item: Dict) -> Dict:
-        dt_value = item.get("datetime")
-        if isinstance(dt_value, datetime):
-            dt_str = dt_value.isoformat()
-        elif isinstance(dt_value, str):
-            dt_str = dt_value
-        else:
-            dt_str = None
+    def _normalize_record(ticker: str, query: Optional[str], item: Dict) -> Dict:
+        if not isinstance(item, dict):
+            return {}
 
-        published = item.get("date")
-        if isinstance(published, datetime):
-            published = published.isoformat()
+        published = item.get("publishedDate") or item.get("date")
+        dt_str = None
+        if isinstance(published, str):
+            try:
+                dt = datetime.fromisoformat(published.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                dt_str = dt.isoformat()
+            except ValueError:
+                dt_str = published
+
+        summary = (
+            item.get("text")
+            or item.get("content")
+            or item.get("description")
+            or item.get("summary")
+        )
 
         return {
             "ticker": ticker.upper(),
-            "query": query,
+            "query": (query or f"{ticker.upper()} stock").strip(),
             "title": item.get("title"),
-            "summary": item.get("desc"),
-            "source": item.get("media"),
-            "link": item.get("link"),
+            "summary": summary,
+            "source": item.get("site") or item.get("symbol"),
+            "link": item.get("url"),
             "datetime": dt_str,
-            "published": published,
-            "img": item.get("img"),
+            "published": dt_str,
+            "img": item.get("image"),
         }
 
 
@@ -175,4 +171,3 @@ class ArticleContentFetcher:
             "text": text_content,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-

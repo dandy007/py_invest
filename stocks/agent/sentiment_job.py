@@ -41,6 +41,7 @@ else:
 # Local imports (after path + env adjustments)
 from stocks.agent.config_loader import DEFAULT_SENTIMENT_PROMPT, load_config
 from stocks.agent.db_tools import DBTools, TOOLS
+from stocks.agent.news_tools import NewsQueryConfig, TickerNewsService
 from stocks.db.constants import TICKERS_TIME_DATA__TYPE__CONST
 from stocks.db.dao_tickers import DAO_Tickers
 from stocks.db.db import DB
@@ -87,6 +88,7 @@ class SentimentJob:
         self.db_tools: Optional[DBTools] = None
         self.conn = None
         self.dao_tickers: Optional[DAO_Tickers] = None
+        self.news_service = TickerNewsService()
 
     # --------------------------------------------------------------------- #
     # Setup helpers
@@ -157,8 +159,9 @@ class SentimentJob:
 
         total_processed = 0
         batch_number = 0
+        skipped: set[str] = set()
         while True:
-            tickers = self._resolve_tickers(None)
+            tickers = self._resolve_tickers(None, skipped)
             if not tickers:
                 if total_processed == 0:
                     logger.info("Sentiment job: no tickers require refresh.")
@@ -175,9 +178,11 @@ class SentimentJob:
                 batch_number,
                 len(tickers),
             )
-            total_processed += self._process_ticker_batch(
+            processed, attempted = self._process_ticker_batch(
                 tickers, prompt_override, batch_number=batch_number
             )
+            total_processed += processed
+            skipped.update(attempted)
 
     # --------------------------------------------------------------------- #
     def _process_ticker_batch(
@@ -185,15 +190,16 @@ class SentimentJob:
         tickers: List[str],
         prompt_override: Optional[str],
         batch_number: Optional[int] = None,
-    ) -> int:
+    ) -> tuple[int, List[str]]:
         if not tickers:
-            return 0
+            return 0, []
 
         processed = 0
         total = len(tickers)
         label_prefix = (
             f"batch {batch_number} - " if batch_number is not None else ""
         )
+        attempted: List[str] = []
 
         for index, ticker_id in enumerate(tickers, start=1):
             logger.info(
@@ -219,20 +225,27 @@ class SentimentJob:
                 processed += 1
             except Exception as exc:
                 logger.error("Sentiment job failed for %s: %s", ticker_id, exc)
+            finally:
+                attempted.append(ticker_id)
 
-        return processed
+        return processed, attempted
 
     # --------------------------------------------------------------------- #
     def _resolve_tickers(
-        self, manual_ids: Optional[Iterable[str]]
+        self,
+        manual_ids: Optional[Iterable[str]],
+        skip_ids: Optional[Iterable[str]] = None,
     ) -> List[str]:
         limit = self.max_tickers
+        skip_lookup = {tid.upper() for tid in (skip_ids or []) if tid}
         if manual_ids:
             resolved: List[str] = []
             for ticker in manual_ids:
                 if not ticker:
                     continue
                 tid = ticker.upper()
+                if tid in skip_lookup:
+                    continue
                 if tid not in resolved:
                     resolved.append(tid)
                 if len(resolved) >= limit:
@@ -250,6 +263,12 @@ class SentimentJob:
         if self.min_market_cap > 0:
             where_clauses.append("(market_cap IS NOT NULL AND market_cap >= %s)")
             params.append(self.min_market_cap)
+
+        skip_list = sorted(skip_lookup)
+        if skip_list:
+            placeholders = ", ".join(["%s"] * len(skip_list))
+            where_clauses.append(f"ticker_id NOT IN ({placeholders})")
+            params.extend(skip_list)
 
         query = (
             "SELECT ticker_id FROM tickers "
@@ -278,7 +297,22 @@ class SentimentJob:
             {"role": "user", "content": prompt},
         ]
 
-        response_text, news_count = self._chat_with_tools(messages)
+        response_text, news_count, had_news_error = self._chat_with_tools(messages)
+        if had_news_error:
+            logger.warning(
+                "Sentiment job: skipping %s because news fetch failed in tool call.",
+                ticker_id,
+            )
+            return None
+
+        if news_count == 0:
+            fallback_news = self._fetch_fmp_news_count(ticker_id)
+            logger.warning(
+                "Sentiment job: skipping %s because the LLM did not fetch any news (fallback detected %s articles).",
+                ticker_id,
+                fallback_news,
+            )
+            return None
         payload = self._parse_json(response_text)
 
         if not payload:
@@ -326,10 +360,11 @@ class SentimentJob:
                 rendered = rendered.replace(f"{{{key}}}", str(value))
             return rendered
 
-    def _chat_with_tools(self, messages: List[dict]) -> tuple[str, int]:
+    def _chat_with_tools(self, messages: List[dict]) -> tuple[str, int, bool]:
         assert self.client is not None
         assert self.db_tools is not None
         news_articles = 0
+        news_error = False
 
         while True:
             response = self.client.chat.completions.create(
@@ -372,7 +407,9 @@ class SentimentJob:
                         except Exception:
                             parsed = None
                         if isinstance(parsed, dict):
-                            if isinstance(parsed.get("count"), int):
+                            if "error" in parsed:
+                                news_error = True
+                            elif isinstance(parsed.get("count"), int):
                                 news_articles += max(0, parsed["count"])
                             elif isinstance(parsed.get("data"), list):
                                 news_articles += len(parsed["data"])
@@ -385,7 +422,22 @@ class SentimentJob:
                     )
                 continue
 
-            return assistant_message.content or "", news_articles
+            return assistant_message.content or "", news_articles, news_error
+
+    def _fetch_fmp_news_count(self, ticker_id: str) -> int:
+        try:
+            config = NewsQueryConfig(
+                ticker=ticker_id,
+                lookback_days=self.lookback_days,
+                max_results=self.max_articles,
+            )
+            records = self.news_service.fetch(config)
+            return len(records)
+        except Exception as exc:
+            logger.warning(
+                "Sentiment job: fallback news fetch failed for %s: %s", ticker_id, exc
+            )
+            return 0
 
     # --------------------------------------------------------------------- #
     @staticmethod

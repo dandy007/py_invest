@@ -87,6 +87,27 @@ class FMP:
                 return response.json()
         return None
     
+    def get_stock_news(self, symbols, limit: int = 20):
+        if isinstance(symbols, (list, tuple, set)):
+            symbol_param = ",".join(sorted({str(sym).upper() for sym in symbols if sym}))
+        else:
+            symbol_param = str(symbols or "").upper()
+        if not symbol_param:
+            raise ValueError("No symbols provided for FMP news request.")
+        url = (
+            f'https://financialmodelingprep.com/stable/news/stock'
+            f'?symbols={symbol_param}&limit={int(limit or 1)}&apikey={os.getenv("FMP_API_KEY")}'
+        )
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            if 'application/json' in response.headers.get('Content-Type', ''):
+                return response.json()
+            raise Exception("FMP news response is not JSON.")
+        if response.status_code == 429:
+            raise FMPException_LimitReached()
+        raise Exception(f"FMP news request failed with status {response.status_code}.")
+    
     def get_key_metrics_ttm(self, ticker_id: str):
         return fmpsdk.key_metrics_ttm(os.getenv("FMP_API_KEY"), ticker_id, 100)
     
