@@ -127,6 +127,7 @@ def calculate_fundament_change(input_ticker_id_list=None):
 
                 score_rev = calc_component_score(rev_growth_history)
                 score_ni = calc_component_score(ni_growth_history)
+                margin_growth_history = get_yoy_growth_list(op_margin_q)
                 
                 # Margins ST vs LT
                 # Margins are not YoY growth, but absolute levels. 
@@ -152,10 +153,25 @@ def calculate_fundament_change(input_ticker_id_list=None):
                 # Clamp
                 final_score = max(-5, min(5, final_score))
                 
+                rev_growth_valid = [x for x in rev_growth_history if x is not None]
+                margin_growth_valid = [x for x in margin_growth_history if x is not None]
+
+                revenue_exp_growth = 0.0
+                if len(rev_growth_valid) >= 2:
+                    last_rev = rev_growth_valid[0]
+                    prev_rev = rev_growth_valid[1]
+                    if last_rev > 0 and prev_rev > 0 and last_rev > prev_rev:
+                        revenue_exp_growth = last_rev
+
+                op_margin_exp_growth = 0.0
+                if len(margin_growth_valid) >= 2:
+                    last_margin = margin_growth_valid[0]
+                    prev_margin = margin_growth_valid[1]
+                    if last_margin > 0 and prev_margin > 0:
+                        op_margin_exp_growth = last_margin
+                
                 # Calculate last_q_yoy_rev_growth
                 last_q_rev_growth = None
-                rev_growth_valid = [x for x in rev_growth_history if x is not None]
-                
                 if len(rev_growth_valid) >= 4:
                      # rev_growth_valid is ordered newest to oldest (based on get_yoy_growth_list calling data_q[i] where data_q is usually descending date from DB select?, verify assumption)
                      # Actually dao_tickers_data.select_ticker_data sorts by date desc usually? 
@@ -181,6 +197,8 @@ def calculate_fundament_change(input_ticker_id_list=None):
                 
                 if last_q_rev_growth is not None:
                     dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__LAST_Q_YOY_REV_GROWTH] = last_q_rev_growth
+                dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__REVENUE_EXP_GROWTH] = revenue_exp_growth
+                dict_data[TICKERS_TIME_DATA__TYPE__CONST.DB_TICKERS__OP_MARGIN_EXP_GROWTH] = op_margin_exp_growth
                 
                 dao_tickers.update_ticker_types(ticker_id, dict_data, True)
                 logger.info(f"calculate_fundament_change: Updated {ticker_id} = {final_score} (Rev:{score_rev} NI:{score_ni} Marg:{score_marg} LastQRevDiff:{last_q_rev_growth})")
@@ -2817,7 +2835,7 @@ def start_import_schedulers():
             #calculate_stddev()
             #calculate_financial_ratios()
             #growthProbability("FLR", 5, 20) # Example call with AAPL, 5 days, +/- 10% range
-            run_sentiment_job()
+            #run_sentiment_job()
             
             pass
 
